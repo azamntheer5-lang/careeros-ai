@@ -1,0 +1,78 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { api } from '@/lib/api-client'
+import { useAppStore } from '@/lib/store'
+import { Sidebar } from '@/components/careeros/sidebar'
+import { Topbar } from '@/components/careeros/topbar'
+import { Footer } from '@/components/careeros/footer'
+import { LoadingScreen } from '@/components/careeros/loading'
+import { DashboardModule } from '@/components/modules/dashboard'
+import { ResumeModule } from '@/components/modules/resume'
+import { AtsModule } from '@/components/modules/ats'
+import { CoverModule } from '@/components/modules/cover'
+import { InterviewModule } from '@/components/modules/interview'
+import { CoachModule } from '@/components/modules/coach'
+import { JobsModule } from '@/components/modules/jobs'
+import { SkillsModule } from '@/components/modules/skills'
+import { AdminModule } from '@/components/modules/admin'
+
+type User = { id: string; name: string; plan: string; headline: string }
+
+export default function Page() {
+  const { active } = useAppStore()
+  const [user, setUser] = useState<User | null>(null)
+  const [booted, setBooted] = useState(false)
+
+  useEffect(() => {
+    api<{ user: User }>('/api/bootstrap')
+      .then(({ user }) => setUser(user))
+      .catch(() => {})
+      .finally(() => setBooted(true))
+  }, [])
+
+  if (!booted || !user) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <div className="flex-1 grid-bg" />
+        <LoadingScreen label="Booting CareerOS AI…" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <div className="flex flex-1 min-h-0">
+        <Sidebar />
+        <div className="flex flex-1 flex-col min-w-0">
+          <Topbar userName={user.name} plan={user.plan} />
+          <main className="flex-1 p-4 sm:p-6 lg:p-8">
+            <div className="mx-auto max-w-7xl">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={active}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {active === 'dashboard' && <DashboardModule userName={user.name} />}
+                  {active === 'resume' && <ResumeModule />}
+                  {active === 'ats' && <AtsModule />}
+                  {active === 'cover' && <CoverModule />}
+                  {active === 'interview' && <InterviewModule />}
+                  {active === 'coach' && <CoachModule />}
+                  {active === 'jobs' && <JobsModule />}
+                  {active === 'skills' && <SkillsModule />}
+                  {active === 'admin' && <AdminModule />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </main>
+        </div>
+      </div>
+      <Footer />
+    </div>
+  )
+}
