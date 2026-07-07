@@ -1,5 +1,5 @@
-// CareerOS AI — Scalable database schema
-// SQLite-compatible (no native list types; JSON stored as String)
+// CareerOS AI — Enterprise schema (Phase 2)
+// SQLite-compatible. Existing models preserved; new models appended.
 
 generator client {
   provider = "prisma-client-js"
@@ -17,6 +17,7 @@ model User {
   headline  String?
   role      String   @default("user") // user | admin
   plan      String   @default("free") // free | pro | premium | enterprise
+  onboarded Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -28,32 +29,79 @@ model User {
   skillProfiles   SkillProfile[]
   aiUsages        AiUsage[]
   notifications   Notification[]
+  profile         CareerProfile?
+  portfolios      Portfolio[]
+  brandings       BrandingAnalysis[]
+  careerPlans     CareerPlan[]
+  companies       Company[]
+  contacts        Contact[]
+  reminders       Reminder[]
+  auditLogs       AuditLog[]
+}
+
+model CareerProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  targetRole      String?
+  industry        String?
+  seniority       String?  // junior | mid | senior | staff | principal | lead | director | vp | c-suite
+  experienceYears Int?
+  targetSalary    String?
+  currency        String   @default("USD")
+  location        String?
+  workMode        String?  // remote | hybrid | onsite
+  careerGoals     String?  // free text
+  timeline        String?  // 3m | 6m | 1y | 2y | 5y
+  linkedinUrl     String?
+  githubUrl       String?
+  portfolioUrl    String?
+  brandStatement  String?
+  strengths       String?  // JSON string[]
+  values          String?  // JSON string[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Resume {
   id         String   @id @default(cuid())
   userId     String
   title      String
-  template   String   @default("modern") // modern | executive | creative | ats | technical | academic | minimal
+  template   String   @default("modern")
   accent     String   @default("emerald")
   font       String   @default("inter")
   spacing    String   @default("normal")
-  data       String   // JSON: { contact, summary, experience[], education[], skills[], projects[], certifications[], customSections[] }
+  careerMode String?  // developer | designer | executive | academic | medical | government | general
+  data       String   // JSON: { contact, summary, experience[], ... }
   atsScore   Int?
+  aiScore    Int?     // overall AI quality score 0-100
   version    Int      @default(1)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  versions   ResumeVersion[]
   coverLetters CoverLetter[]
   @@index([userId])
+}
+
+model ResumeVersion {
+  id        String   @id @default(cuid())
+  resumeId  String
+  version   Int
+  data      String   // snapshot
+  atsScore  Int?
+  aiScore   Int?
+  note      String?
+  createdAt DateTime @default(now())
+  resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  @@index([resumeId])
 }
 
 model CoverLetter {
   id         String   @id @default(cuid())
   userId     String
   resumeId   String?
-  type       String   @default("cover") // cover | followup | thankyou | networking | referral
+  type       String   @default("cover")
   company    String?
   role       String?
   content    String
@@ -70,9 +118,11 @@ model Interview {
   type       String   // technical | hr | behavioral | industry
   role       String?
   company    String?
+  mode       String   @default("text") // text | voice
   status     String   @default("active") // active | completed
   messages   String   // JSON: [{role, content, rating?, feedback?}]
   score      Int?
+  confidence Int?     // voice confidence score
   summary    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -84,8 +134,8 @@ model CoachSession {
   id         String   @id @default(cuid())
   userId     String
   title      String
-  focus      String   // career-planning | promotion | salary | skills | industry | pivot
-  messages   String   // JSON: [{role, content}]
+  focus      String
+  messages   String   // JSON
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -95,19 +145,21 @@ model CoachSession {
 model Job {
   id          String   @id @default(cuid())
   userId      String
+  companyId   String?
   company     String
   role        String
   location    String?
   salary      String?
   url         String?
-  status      String   @default("wishlist") // wishlist | applied | screening | interview | offer | rejected | accepted
-  priority    String   @default("medium") // low | medium | high
+  status      String   @default("wishlist")
+  priority    String   @default("medium")
   notes       String?
   appliedAt   DateTime?
   deadline    DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyRef  Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   @@index([userId])
   @@index([status])
 }
@@ -116,21 +168,122 @@ model SkillProfile {
   id         String   @id @default(cuid())
   userId     String
   targetRole String
-  skills     String   // JSON: [{ name, level, targetLevel }]
-  gaps       String?  // JSON: [{ skill, gap, priority }]
-  roadmap    String?  // JSON: [{ phase, focus, actions[], courses[] }]
+  skills     String   // JSON
+  gaps       String?  // JSON
+  roadmap    String?  // JSON
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
 }
 
+model Portfolio {
+  id         String   @id @default(cuid())
+  userId     String
+  slug       String   @unique
+  title      String
+  tagline    String?
+  bio        String?
+  theme      String   @default("aurora") // aurora | minimal | bold | dark | paper
+  accent     String   @default("emerald")
+  sections   String   // JSON: ordered section config
+  published  Boolean  @default(false)
+  views      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model BrandingAnalysis {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String   // linkedin | identity
+  headline   String?
+  about      String?
+  data       String   // JSON analysis payload
+  score      Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model CareerPlan {
+  id              String   @id @default(cuid())
+  userId          String
+  targetRole      String
+  roadmap         String   // JSON phases
+  salaryStrategy  String?
+  promotionPlan   String?
+  marketInsights  String?  // JSON
+  readinessScore  Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Company {
+  id         String   @id @default(cuid())
+  userId     String
+  name       String
+  domain     String?
+  industry   String?
+  size       String?  // startup | small | mid | large | enterprise
+  stage      String?  // seed | a | b | c | ipo | public
+  location   String?
+  culture    String?
+  notes      String?
+  research   String?  // JSON research payload
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs       Job[]
+  @@index([userId])
+}
+
+model Contact {
+  id            String   @id @default(cuid())
+  userId        String
+  companyId     String?
+  name          String
+  role          String?
+  email         String?
+  linkedin      String?
+  phone         String?
+  type          String   @default("recruiter") // recruiter | hiring_manager | peer | referral | mentor
+  notes         String?
+  lastContactAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Reminder {
+  id        String   @id @default(cuid())
+  userId    String
+  jobId     String?
+  companyId String?
+  title     String
+  dueAt     DateTime
+  type      String   @default("followup") // followup | interview | deadline | custom
+  done      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([dueAt])
+}
+
 model AiUsage {
   id         String   @id @default(cuid())
   userId     String
-  feature    String   // resume-enhance | ats-analyze | cover-letter | interview | coach | skills
+  feature    String
+  model      String?  // routed model label
   tokens     Int      @default(0)
   cost       Float    @default(0)
+  latencyMs  Int?
   success    Boolean  @default(true)
   createdAt  DateTime @default(now())
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -147,4 +300,26 @@ model Notification {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  meta      String?  // JSON
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([userId])
+  @@index([action])
+}
+
+model FeatureFlag {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  enabled     Boolean  @default(true)
+  description String?
+  rollout     Int      @default(100) // percentage 0-100
+  updatedAt   DateTime @updatedAt
 }

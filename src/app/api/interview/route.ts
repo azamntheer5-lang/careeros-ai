@@ -18,13 +18,14 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
-    const { type, role, company } = await req.json()
+    const { type, role, company, mode } = await req.json()
     const interview = await db.interview.create({
       data: {
         userId: user.id,
         type: type || 'technical',
         role: role || 'Software Engineer',
         company: company || null,
+        mode: mode || 'text',
         status: 'active',
         messages: JSON.stringify([]),
       },

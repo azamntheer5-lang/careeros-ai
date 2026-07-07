@@ -8,12 +8,13 @@ import { useToast } from '@/hooks/use-toast'
 import { ModuleHeader } from '@/components/careeros/module-header'
 import { ResumePreview } from '@/components/careeros/resume-preview'
 import { LoadingScreen, Spinner } from '@/components/careeros/loading'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from '@/components/ui/dialog'
@@ -21,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   FileText, Plus, Sparkles, Wand2, Trash2, Save, ChevronLeft, GripVertical,
   PlusCircle, Briefcase, GraduationCap, Award, FolderGit2, X, RefreshCw,
+  History, Zap,
 } from 'lucide-react'
 import {
   ResumeData, ResumeMeta, TEMPLATES, ACCENTS, emptyResumeData, normalizeResumeData, uid, Experience, Education, Project, Certification,
@@ -181,15 +183,28 @@ export function ResumeModule() {
                 <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
                 <SelectContent>{ACCENTS.map((a) => <SelectItem key={a.id} value={a.id} className="capitalize">{a.id}</SelectItem>)}</SelectContent>
               </Select>
+              <Select value={active.careerMode || '__none'} onValueChange={(v) => update({ careerMode: v === '__none' ? null : v })}>
+                <SelectTrigger className="w-[130px]"><SelectValue placeholder="Career mode" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">General</SelectItem>
+                  <SelectItem value="developer">Developer</SelectItem>
+                  <SelectItem value="designer">Designer</SelectItem>
+                  <SelectItem value="executive">Executive</SelectItem>
+                  <SelectItem value="academic">Academic</SelectItem>
+                  <SelectItem value="medical">Medical</SelectItem>
+                  <SelectItem value="government">Government</SelectItem>
+                </SelectContent>
+              </Select>
               <Button onClick={save} disabled={!dirty || saving} size="sm" className="ms-auto rounded-full bg-brand text-brand-foreground hover:bg-brand/90">
                 {saving ? <Spinner /> : <Save className="h-4 w-4" />} {t('save')}
               </Button>
             </div>
 
             <Tabs defaultValue="edit" className="w-full">
-              <TabsList className="grid w-full max-w-xs grid-cols-2">
+              <TabsList className="grid w-full max-w-md grid-cols-3">
                 <TabsTrigger value="edit">Editor</TabsTrigger>
                 <TabsTrigger value="preview">{t('livePreview')}</TabsTrigger>
+                <TabsTrigger value="insights">Insights</TabsTrigger>
               </TabsList>
               <TabsContent value="edit" className="mt-4">
                 <ResumeEditor data={active.data} onChange={updateData} />
@@ -200,6 +215,9 @@ export function ResumeModule() {
                     <ResumePreview data={active.data} template={active.template} accent={active.accent} />
                   </div>
                 </Card>
+              </TabsContent>
+              <TabsContent value="insights" className="mt-4">
+                <ResumeInsights resume={active} onScored={(score) => setActive((a) => a ? { ...a, aiScore: score } : a)} />
               </TabsContent>
             </Tabs>
           </div>
@@ -537,5 +555,137 @@ function GenerateDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenC
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** Resume Insights tab: AI quality scoring + version history timeline. */
+function ResumeInsights({ resume, onScored }: { resume: ResumeMeta; onScored: (score: number) => void }) {
+  const { toast } = useToast()
+  const [scoring, setScoring] = useState(false)
+  const [score, setScore] = useState<any>(null)
+  const [versions, setVersions] = useState<any[]>([])
+  const [savingVersion, setSavingVersion] = useState(false)
+
+  useEffect(() => {
+    api<{ versions: any[] }>(`/api/resumes/${resume.id}/versions`).then(({ versions }) => setVersions(versions)).catch(() => {})
+  }, [resume.id])
+
+  const runScore = async () => {
+    setScoring(true)
+    try {
+      const { score } = await api<{ score: any }>(`/api/resumes/${resume.id}/score`, { method: 'POST' })
+      setScore(score)
+      onScored(score.overall)
+      toast({ title: 'Resume scored', description: `AI quality: ${score.overall}/100` })
+    } catch (e) {
+      toast({ title: 'Scoring failed', description: (e as Error).message, variant: 'destructive' })
+    } finally { setScoring(false) }
+  }
+
+  const saveVersion = async () => {
+    setSavingVersion(true)
+    try {
+      await api(`/api/resumes/${resume.id}/versions`, { method: 'POST', body: { note: 'Manual checkpoint' } })
+      const { versions } = await api<{ versions: any[] }>(`/api/resumes/${resume.id}/versions`)
+      setVersions(versions)
+      toast({ title: 'Version saved', description: 'Checkpoint created in history.' })
+    } catch (e) {
+      toast({ title: 'Failed', description: (e as Error).message, variant: 'destructive' })
+    } finally { setSavingVersion(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* AI Score */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /> AI Quality Score</h3>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={saveVersion} disabled={savingVersion}><History className="h-3.5 w-3.5" /> Save version</Button>
+              <Button size="sm" onClick={runScore} disabled={scoring} className="bg-brand text-brand-foreground hover:bg-brand/90">
+                {scoring ? <><Spinner /> Scoring…</> : <><Sparkles className="h-3.5 w-3.5" /> Score with AI</>}
+              </Button>
+            </div>
+          </div>
+          {score ? (
+            <div className="grid grid-cols-1 md:grid-cols-[160px_1fr] gap-4">
+              <div className="flex flex-col items-center justify-center">
+                <ScoreCircle value={score.overall} />
+                <span className="text-xs text-muted-foreground mt-1.5">overall quality</span>
+              </div>
+              <div className="space-y-2">
+                {score.dimensions?.map((d: any) => (
+                  <div key={d.name}>
+                    <div className="flex justify-between text-xs mb-1"><span className="capitalize">{d.name}</span><span className="font-medium">{d.score}</span></div>
+                    <Progress value={d.score} className="h-1.5" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : resume.aiScore != null ? (
+            <div className="flex items-center gap-3">
+              <ScoreCircle value={resume.aiScore} small />
+              <div>
+                <div className="text-sm font-medium">Last score: {resume.aiScore}/100</div>
+                <div className="text-xs text-muted-foreground">Run again for fresh analysis + quick wins.</div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Run an AI quality audit across impact, clarity, keywords, formatting and quantification. You'll get a score plus 3 quick wins.</p>
+          )}
+          {score?.quickWins?.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+              {score.quickWins.map((w: string, i: number) => (
+                <div key={i} className="flex items-start gap-2 rounded-lg border p-2.5 text-xs">
+                  <Zap className="h-3.5 w-3.5 text-brand mt-0.5 shrink-0" /><span>{w}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Version history */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><History className="h-4 w-4 text-brand" /> Version History</CardTitle></CardHeader>
+        <CardContent>
+          <div className="relative ps-6">
+            <div className="absolute start-2 top-2 bottom-2 w-0.5 bg-border" />
+            {versions.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4">No versions saved yet. Save a checkpoint to track changes over time.</p>
+            ) : versions.map((v, i) => (
+              <div key={v.id} className="relative pb-4 last:pb-0">
+                <div className={`absolute -start-[18px] top-1 h-3.5 w-3.5 rounded-full ring-4 ring-brand/10 ${i === 0 ? 'bg-brand' : 'bg-muted-foreground/40'}`} />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">v{v.version}</span>
+                  {i === 0 && <Badge className="text-[9px] bg-brand/15 text-brand border-brand/30" variant="outline">current</Badge>}
+                  {v.atsScore != null && <span className="text-[10px] text-brand">{v.atsScore}% ATS</span>}
+                  {v.aiScore != null && <span className="text-[10px] text-muted-foreground">{v.aiScore} AI</span>}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">{v.note || 'Checkpoint'} · {new Date(v.createdAt).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function ScoreCircle({ value, small }: { value: number; small?: boolean }) {
+  const r = small ? 22 : 32
+  const circ = 2 * Math.PI * r
+  const offset = circ - (value / 100) * circ
+  const size = small ? 56 : 80
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90" viewBox={`0 0 ${size} ${size}`}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--muted)" strokeWidth={small ? 4 : 5} />
+        <motion.circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--brand)" strokeWidth={small ? 4 : 5} strokeLinecap="round"
+          strokeDasharray={circ} initial={{ strokeDashoffset: circ }} animate={{ strokeDashoffset: offset }} transition={{ duration: 0.8 }} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center font-bold text-brand" style={{ fontSize: small ? 14 : 20 }}>{value}</div>
+    </div>
   )
 }

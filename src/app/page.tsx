@@ -8,14 +8,22 @@ import { Sidebar } from '@/components/careeros/sidebar'
 import { Topbar } from '@/components/careeros/topbar'
 import { Footer } from '@/components/careeros/footer'
 import { LoadingScreen } from '@/components/careeros/loading'
+import { CommandPalette } from '@/components/careeros/command-palette'
+import { Onboarding } from '@/components/careeros/onboarding'
 import { DashboardModule } from '@/components/modules/dashboard'
+import { ProfileModule } from '@/components/modules/profile'
 import { ResumeModule } from '@/components/modules/resume'
 import { AtsModule } from '@/components/modules/ats'
 import { CoverModule } from '@/components/modules/cover'
+import { PortfolioModule } from '@/components/modules/portfolio'
+import { BrandingModule } from '@/components/modules/branding'
 import { InterviewModule } from '@/components/modules/interview'
 import { CoachModule } from '@/components/modules/coach'
+import { IntelligenceModule } from '@/components/modules/intelligence'
 import { JobsModule } from '@/components/modules/jobs'
 import { SkillsModule } from '@/components/modules/skills'
+import { AiCenterModule } from '@/components/modules/aicenter'
+import { PlansModule } from '@/components/modules/plans'
 import { AdminModule } from '@/components/modules/admin'
 
 type User = { id: string; name: string; plan: string; headline: string }
@@ -46,7 +54,7 @@ export default function Page() {
       <div className="flex flex-1 min-h-0">
         <Sidebar />
         <div className="flex flex-1 flex-col min-w-0">
-          <Topbar userName={user.name} plan={user.plan} />
+          <Topbar />
           <main className="flex-1 p-4 sm:p-6 lg:p-8">
             <div className="mx-auto max-w-7xl">
               <AnimatePresence mode="wait">
@@ -58,13 +66,19 @@ export default function Page() {
                   transition={{ duration: 0.2 }}
                 >
                   {active === 'dashboard' && <DashboardModule userName={user.name} />}
+                  {active === 'profile' && <ProfileModule />}
                   {active === 'resume' && <ResumeModule />}
                   {active === 'ats' && <AtsModule />}
                   {active === 'cover' && <CoverModule />}
+                  {active === 'portfolio' && <PortfolioModule />}
+                  {active === 'branding' && <BrandingModule />}
                   {active === 'interview' && <InterviewModule />}
                   {active === 'coach' && <CoachModule />}
+                  {active === 'intelligence' && <IntelligenceModule />}
                   {active === 'jobs' && <JobsModule />}
                   {active === 'skills' && <SkillsModule />}
+                  {active === 'aicenter' && <AiCenterModule />}
+                  {active === 'plans' && <PlansModule />}
                   {active === 'admin' && <AdminModule />}
                 </motion.div>
               </AnimatePresence>
@@ -73,6 +87,8 @@ export default function Page() {
         </div>
       </div>
       <Footer />
+      <CommandPalette />
+      <Onboarding />
     </div>
   )
 }

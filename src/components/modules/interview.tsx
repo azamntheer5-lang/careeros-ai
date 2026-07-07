@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Mic, Plus, Send, Trophy, CheckCircle2, AlertCircle, Brain, Star, RotateCcw } from 'lucide-react'
+import { Mic, Plus, Send, Trophy, CheckCircle2, AlertCircle, Brain, Star, RotateCcw, Keyboard, Square, Volume2 } from 'lucide-react'
 import { Interview, InterviewMessage } from '@/lib/types'
 
 const TYPES = [
@@ -33,7 +33,7 @@ export function InterviewModule() {
   const [busy, setBusy] = useState(false)
   const [ending, setEnding] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
-  const [setup, setSetup] = useState({ type: 'technical', role: 'Senior Software Engineer', company: '' })
+  const [setup, setSetup] = useState({ type: 'technical', role: 'Senior Software Engineer', company: '', mode: 'text' })
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -208,18 +208,22 @@ export function InterviewModule() {
             </div>
 
             {active.status === 'active' ? (
-              <div className="border-t p-3 flex gap-2">
-                <Input
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
-                  placeholder={t('yourAnswer')}
-                  disabled={busy}
-                  className="flex-1"
-                />
-                <Button onClick={submit} disabled={busy || !answer.trim()} className="bg-brand text-brand-foreground hover:bg-brand/90">
-                  {busy ? <Spinner /> : <Send className="h-4 w-4" />}
-                </Button>
+              <div className="border-t p-3">
+                {active.mode === 'voice' && <VoiceRecorder onTranscribed={(txt) => setAnswer((a) => (a ? a + ' ' : '') + txt)} disabled={busy} />}
+                <div className="flex gap-2">
+                  <Input
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+                    placeholder={t('yourAnswer')}
+                    disabled={busy}
+                    className="flex-1"
+                  />
+                  {active.mode === 'voice' && <SpeakButton text={lastAssistantText(active.messages)} disabled={busy} />}
+                  <Button onClick={submit} disabled={busy || !answer.trim()} className="bg-brand text-brand-foreground hover:bg-brand/90">
+                    {busy ? <Spinner /> : <Send className="h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="border-t p-4">
@@ -265,6 +269,18 @@ export function InterviewModule() {
                 <Label className="text-xs text-muted-foreground">{t('company')}</Label>
                 <Input value={setup.company} onChange={(e) => setSetup({ ...setup, company: e.target.value })} placeholder="Optional" className="mt-1" />
               </div>
+              <div>
+                <Label className="text-xs text-muted-foreground">Mode</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button onClick={() => setSetup({ ...setup, mode: 'text' })} className={`rounded-lg border p-2.5 text-sm flex items-center justify-center gap-2 ${setup.mode === 'text' ? 'border-brand bg-brand-soft text-brand' : 'hover:bg-accent'}`}>
+                    <Keyboard className="h-4 w-4" /> Text
+                  </button>
+                  <button onClick={() => setSetup({ ...setup, mode: 'voice' })} className={`rounded-lg border p-2.5 text-sm flex items-center justify-center gap-2 ${setup.mode === 'voice' ? 'border-brand bg-brand-soft text-brand' : 'hover:bg-accent'}`}>
+                    <Mic className="h-4 w-4" /> Voice
+                  </button>
+                </div>
+                {setup.mode === 'voice' && <p className="text-[10px] text-muted-foreground mt-1.5">The AI speaks questions aloud; you answer with your voice.</p>}
+              </div>
             </div>
             <div className="flex gap-2 mt-5">
               <Button variant="outline" className="flex-1" onClick={() => setShowSetup(false)}>{t('cancel')}</Button>
@@ -275,6 +291,94 @@ export function InterviewModule() {
           </motion.div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Returns the last assistant message text (for TTS playback). */
+function lastAssistantText(messages: InterviewMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant') return messages[i].content
+  }
+  return ''
+}
+
+/** Button that speaks the given text via the TTS API. */
+function SpeakButton({ text, disabled }: { text: string; disabled?: boolean }) {
+  const [playing, setPlaying] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const speak = async () => {
+    if (!text || disabled) return
+    setPlaying(true)
+    try {
+      const res = await fetch('/api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      if (audioRef.current) { audioRef.current.pause(); URL.revokeObjectURL(audioRef.current.src) }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => setPlaying(false)
+      audio.onerror = () => setPlaying(false)
+      await audio.play()
+    } catch { setPlaying(false) }
+  }
+  const stop = () => { audioRef.current?.pause(); setPlaying(false) }
+  return (
+    <Button type="button" variant="outline" size="icon" onClick={playing ? stop : speak} disabled={disabled || !text} aria-label={playing ? 'Stop' : 'Play question'}>
+      {playing ? <Square className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+    </Button>
+  )
+}
+
+/** Records audio from the mic, sends to ASR, and returns transcribed text. */
+function VoiceRecorder({ onTranscribed, disabled }: { onTranscribed: (text: string) => void; disabled?: boolean }) {
+  const [recording, setRecording] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
+  const mediaRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+
+  const start = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        setTranscribing(true)
+        try {
+          const reader = new FileReader()
+          reader.onloadend = async () => {
+            const base64 = (reader.result as string).split(',')[1]
+            const res = await fetch('/api/asr', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio: base64 }) })
+            const data = await res.json()
+            if (data.text) onTranscribed(data.text)
+          }
+          reader.readAsDataURL(blob)
+        } catch (e) {
+          console.error('ASR failed', e)
+        } finally { setTranscribing(false) }
+      }
+      mr.start()
+      mediaRef.current = mr
+      setRecording(true)
+    } catch (e) {
+      console.error('Mic access denied', e)
+    }
+  }
+  const stop = () => { mediaRef.current?.stop(); setRecording(false) }
+
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-lg bg-brand-soft/40 border border-brand/20 p-2">
+      <button
+        onClick={recording ? stop : start}
+        disabled={disabled || transcribing}
+        className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${recording ? 'bg-destructive text-white' : 'bg-brand text-brand-foreground'}`}
+      >
+        {recording ? <><span className="h-2 w-2 rounded-full bg-white animate-pulse" /> Stop recording</> : transcribing ? <><Spinner /> Transcribing…</> : <><Mic className="h-3.5 w-3.5" /> Hold to speak</>}
+      </button>
+      {recording && <span className="text-[11px] text-muted-foreground">Listening… speak naturally.</span>}
     </div>
   )
 }

@@ -3,16 +3,20 @@
 import { motion } from 'framer-motion'
 import { useApp } from '@/components/app-provider'
 import { useAppStore } from '@/lib/store'
+import { useProfile } from '@/components/careeros/profile-context'
 import { ThemeToggle, LangToggle } from './toggles'
 import { MobileNav } from './mobile-nav'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { Bell, Search } from 'lucide-react'
+import { Bell, Command } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export function Topbar({ userName, plan }: { userName: string; plan: string }) {
+export function Topbar() {
   const { t } = useApp()
-  const { active } = useAppStore()
+  const { active, setPalette } = useAppStore()
+  const { user } = useProfile()
+  const userName = user?.name || 'Guest'
+  const plan = user?.plan || 'free'
 
   return (
     <header className="sticky top-0 z-30 h-16 border-b border-border/70 glass">
@@ -32,8 +36,15 @@ export function Topbar({ userName, plan }: { userName: string; plan: string }) {
         </div>
 
         <div className="ms-auto flex items-center gap-1.5 sm:gap-2">
-          <Button variant="ghost" size="icon" className="hidden sm:inline-flex h-9 w-9 rounded-full" aria-label="Search">
-            <Search className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPalette(true)}
+            className="hidden md:inline-flex h-9 items-center gap-2 rounded-full text-muted-foreground hover:text-foreground"
+            aria-label={t('commandPalette')}
+          >
+            <Command className="h-3.5 w-3.5" />
+            <kbd className="rounded border bg-muted px-1 py-0.5 text-[9px] font-mono">⌘K</kbd>
           </Button>
           <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Notifications">
             <Bell className="h-4 w-4" />

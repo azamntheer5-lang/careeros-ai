@@ -1,0 +1,653 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useEffect, useState } from 'react'
+     4→     4→import { motion } from 'framer-motion'
+     5→     5→import { api } from '@/lib/api-client'
+     6→     6→import { useApp } from '@/components/app-provider'
+     7→     7→import { useToast } from '@/hooks/use-toast'
+     8→     8→import { useProfile } from '@/components/careeros/profile-context'
+     9→     9→import { useAppStore } from '@/lib/store'
+    10→    10→import { ModuleHeader } from '@/components/careeros/module-header'
+    11→    11→import { Spinner } from '@/components/careeros/loading'
+    12→    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→    13→import { Button } from '@/components/ui/button'
+    14→    14→import { Input } from '@/components/ui/input'
+    15→    15→import { Label } from '@/components/ui/label'
+    16→    16→import { Badge } from '@/components/ui/badge'
+    17→    17→import { Progress } from '@/components/ui/progress'
+    18→    18→import { ScrollArea } from '@/components/ui/scroll-area'
+    19→    19→import {
+    20→    20→  Compass,
+    21→    21→  Sparkles,
+    22→    22→  Target,
+    23→    23→  TrendingUp,
+    24→    24→  CircleDollarSign,
+    25→    25→  Rocket,
+    26→    26→  Lightbulb,
+    27→    27→  CheckCircle2,
+    28→    28→  ArrowRight,
+    29→    29→  Eye,
+    30→    30→  Quote,
+    31→    31→  History,
+    32→    32→  Clock,
+    33→    33→  AlertCircle,
+    34→    34→  ChevronRight,
+    35→    35→} from 'lucide-react'
+    36→    36→
+    37→    37→// ---------------------------------------------------------------------------
+    38→    38→// Types (mirror the API contract)
+    39→    39→// ---------------------------------------------------------------------------
+    40→    40→type RoadmapPhase = {
+    41→    41→  phase: string
+    42→    42→  duration: string
+    43→    43→  focus: string
+    44→    44→  milestones: string[]
+    45→    45→  skills: string[]
+    46→    46→  visibilityMoves: string[]
+    47→    47→}
+    48→    48→type SalaryStrategy = {
+    49→    49→  current: string
+    50→    50→  target: string
+    51→    51→  steps: string[]
+    52→    52→  negotiation: string
+    53→    53→}
+    54→    54→type PromotionPlan = {
+    55→    55→  gapToNext: string
+    56→    56→  scope: string[]
+    57→    57→  evidence: string[]
+    58→    58→  conversation: string
+    59→    59→}
+    60→    60→type MarketInsight = { topic: string; insight: string; action: string }
+    61→    61→type Plan = {
+    62→    62→  id: string
+    63→    63→  targetRole: string
+    64→    64→  readinessScore: number | null
+    65→    65→  roadmap: RoadmapPhase[]
+    66→    66→  salaryStrategy: SalaryStrategy | null
+    67→    67→  promotionPlan: PromotionPlan | null
+    68→    68→  marketInsights: MarketInsight[]
+    69→    69→  nextMoves?: string[]
+    70→    70→  createdAt: string
+    71→    71→  updatedAt: string
+    72→    72→}
+    73→    73→
+    74→    74→// ---------------------------------------------------------------------------
+    75→    75→// Helpers
+    76→    76→// ---------------------------------------------------------------------------
+    77→    77→function sumMonths(phases: RoadmapPhase[]): string {
+    78→    78→  let total = 0
+    79→    79→  let matched = 0
+    80→    80→  for (const p of phases) {
+    81→    81→    const m = p.duration?.match?.(/(\d+)\s*mo/i)
+    82→    82→    if (m) { total += Number(m[1]); matched++ }
+    83→    83→  }
+    84→    84→  if (!matched) return phases.length ? `${phases.length} phases` : '—'
+    85→    85→  return total >= 12 ? `${(total / 12).toFixed(1).replace('.0', '')}y` : `${total}m`
+    86→    86→}
+    87→    87→
+    88→    88→function timeAgo(iso: string): string {
+    89→    89→  const diff = Date.now() - new Date(iso).getTime()
+    90→    90→  const d = Math.floor(diff / 86400000)
+    91→    91→  if (d <= 0) return 'today'
+    92→    92→  if (d === 1) return 'yesterday'
+    93→    93→  if (d < 30) return `${d}d ago`
+    94→    94→  const mo = Math.floor(d / 30)
+    95→    95→  if (mo < 12) return `${mo}mo ago`
+    96→    96→  return `${Math.floor(mo / 12)}y ago`
+    97→    97→}
+    98→    98→
+    99→    99→// ---------------------------------------------------------------------------
+   100→   100→// Module
+   101→   101→// ---------------------------------------------------------------------------
+   102→   102→export function IntelligenceModule() {
+   103→   103→  const { t } = useApp()
+   104→   104→  const { toast } = useToast()
+   105→   105→  const { profile, loading: profileLoading } = useProfile()
+   106→   106→  const setModule = useAppStore((s) => s.set)
+   107→   107→
+   108→   108→  const [targetRole, setTargetRole] = useState('')
+   109→   109→  const [plans, setPlans] = useState<Plan[]>([])
+   110→   110→  const [active, setActive] = useState<Plan | null>(null)
+   111→   111→  const [busy, setBusy] = useState(false)
+   112→   112→  const [historyLoading, setHistoryLoading] = useState(true)
+   113→   113→
+   114→   114→  // Pre-fill from profile.
+   115→   115→  useEffect(() => {
+   116→   116→    if (profile?.targetRole) setTargetRole(profile.targetRole)
+   117→   117→  }, [profile?.targetRole])
+   118→   118→
+   119→   119→  // Load plan history.
+   120→   120→  useEffect(() => {
+   121→   121→    let cancelled = false
+   122→   122→    setHistoryLoading(true)
+   123→   123→    api<{ plans: Plan[] }>('/api/intelligence')
+   124→   124→      .then((res) => {
+   125→   125→        if (cancelled) return
+   126→   126→        setPlans(res.plans)
+   127→   127→        if (res.plans[0]) setActive(res.plans[0])
+   128→   128→      })
+   129→   129→      .catch(() => {})
+   130→   130→      .finally(() => !cancelled && setHistoryLoading(false))
+   131→   131→    return () => { cancelled = true }
+   132→   132→  }, [])
+   133→   133→
+   134→   134→  const generate = async () => {
+   135→   135→    const role = targetRole.trim() || profile?.targetRole || ''
+   136→   136→    if (!role) {
+   137→   137→      toast({
+   138→   138→        title: 'Set a target role first',
+   139→   139→        description: 'Add your target role in Career Profile to power your roadmap.',
+   140→   140→        variant: 'destructive',
+   141→   141→      })
+   142→   142→      setModule('profile')
+   143→   143→      return
+   144→   144→    }
+   145→   145→    setBusy(true)
+   146→   146→    try {
+   147→   147→      const { plan } = await api<{ plan: Plan }>('/api/intelligence', {
+   148→   148→        method: 'POST',
+   149→   149→        body: { targetRole: role },
+   150→   150→      })
+   151→   151→      setActive(plan)
+   152→   152→      setPlans((prev) => [plan, ...prev])
+   153→   153→      toast({
+   154→   154→        title: 'Roadmap ready',
+   155→   155→        description: `${plan.roadmap.length} phases · readiness ${plan.readinessScore ?? '—'}/100`,
+   156→   156→      })
+   157→   157→    } catch (e) {
+   158→   158→      toast({ title: 'Generation failed', description: (e as Error).message, variant: 'destructive' })
+   159→   159→    } finally {
+   160→   160→      setBusy(false)
+   161→   161→    }
+   162→   162→  }
+   163→   163→
+   164→   164→  const noProfileRole = !profileLoading && !profile?.targetRole
+   165→   165→
+   166→   166→  return (
+   167→   167→    <div>
+   168→   168→      <ModuleHeader
+   169→   169→        title={t('intelligenceTitle')}
+   170→   170→        subtitle={t('intelligenceSub')}
+   171→   171→        icon={Compass}
+   172→   172→        actions={
+   173→   173→          active ? (
+   174→   174→            <Button
+   175→   175→              onClick={generate}
+   176→   176→              disabled={busy}
+   177→   177→              className="bg-brand text-brand-foreground hover:bg-brand/90 rounded-full h-9"
+   178→   178→            >
+   179→   179→              {busy ? <Spinner /> : <Sparkles className="h-4 w-4" />}
+   180→   180→              <span className="hidden sm:inline">Regenerate</span>
+   181→   181→            </Button>
+   182→   182→          ) : undefined
+   183→   183→        }
+   184→   184→      />
+   185→   185→
+   186→   186→      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+   187→   187→        {/* MAIN COLUMN */}
+   188→   188→        <div className="space-y-4 min-w-0">
+   189→   189→          {/* HERO / GENERATE CARD */}
+   190→   190→          {!active && (
+   191→   191→            <Card className="overflow-hidden">
+   192→   192→              <CardContent className="p-0">
+   193→   193→                <div className="relative grid-bg p-6 sm:p-8">
+   194→   194→                  <div className="relative z-10 flex flex-col sm:flex-row sm:items-end gap-4">
+   195→   195→                    <div className="flex-1">
+   196→   196→                      <div className="inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-xs font-medium text-brand mb-3">
+   197→   197→                        <Compass className="h-3.5 w-3.5" /> Unified career roadmap
+   198→   198→                      </div>
+   199→   199→                      <h3 className="text-xl sm:text-2xl font-semibold tracking-tight">
+   200→   200→                        Generate my roadmap
+   201→   201→                      </h3>
+   202→   202→                      <p className="text-sm text-muted-foreground mt-1 max-w-md">
+   203→   203→                        One AI pass combines skills, salary, promotion and market moves into a
+   204→   204→                        time-boxed plan to your target role.
+   205→   205→                      </p>
+   206→   206→                    </div>
+   207→   207→                  </div>
+   208→   208→
+   209→   209→                  <div className="relative z-10 mt-5 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+   210→   210→                    <div>
+   211→   211→                      <Label className="text-xs text-muted-foreground">{t('targetRole')}</Label>
+   212→   212→                      <Input
+   213→   213→                        value={targetRole}
+   214→   214→                        onChange={(e) => setTargetRole(e.target.value)}
+   215→   215→                        placeholder="e.g. Staff Software Engineer"
+   216→   216→                        className="mt-1"
+   217→   217→                      />
+   218→   218→                      {noProfileRole && (
+   219→   219→                        <button
+   220→   220→                          onClick={() => setModule('profile')}
+   221→   221→                          className="mt-2 inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
+   222→   222→                        >
+   223→   223→                          <AlertCircle className="h-3.5 w-3.5" />
+   224→   224→                          Set your career profile for a richer plan
+   225→   225→                          <ChevronRight className="h-3 w-3" />
+   226→   226→                        </button>
+   227→   227→                      )}
+   228→   228→                    </div>
+   229→   229→                    <Button
+   230→   230→                      onClick={generate}
+   231→   231→                      disabled={busy}
+   232→   232→                      className="bg-brand text-brand-foreground hover:bg-brand/90 rounded-full h-10 md:w-auto"
+   233→   233→                    >
+   234→   234→                      {busy ? <Spinner /> : <Sparkles className="h-4 w-4" />}
+   235→   235→                      {busy ? 'Building your roadmap…' : 'Generate roadmap'}
+   236→   236→                    </Button>
+   237→   237→                  </div>
+   238→   238→                </div>
+   239→   239→              </CardContent>
+   240→   240→            </Card>
+   241→   241→          )}
+   242→   242→
+   243→   243→          {/* LOADING STATE */}
+   244→   244→          {busy && !active && (
+   245→   245→            <Card>
+   246→   246→              <CardContent className="p-8 flex flex-col items-center gap-3">
+   247→   247→                <div className="h-12 w-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
+   248→   248→                <p className="text-sm text-muted-foreground text-center">
+   249→   249→                  Orchestrating skills, salary, promotion & market signals…
+   250→   250→                </p>
+   251→   251→              </CardContent>
+   252→   252→            </Card>
+   253→   253→          )}
+   254→   254→
+   255→   255→          {/* RESULTS DASHBOARD */}
+   256→   256→          {active && (
+   257→   257→            <motion.div
+   258→   258→              initial={{ opacity: 0, y: 12 }}
+   259→   259→              animate={{ opacity: 1, y: 0 }}
+   260→   260→              className="space-y-4"
+   261→   261→            >
+   262→   262→              {/* HERO STATS */}
+   263→   263→              <Card className="overflow-hidden">
+   264→   264→                <CardContent className="p-0">
+   265→   265→                  <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 p-5">
+   266→   266→                    <ReadinessRing score={active.readinessScore ?? 0} />
+   267→   267→                    <div className="flex flex-col justify-center gap-3 min-w-0">
+   268→   268→                      <div className="flex flex-wrap items-center gap-2">
+   269→   269→                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+   270→   270→                          Target
+   271→   271→                        </span>
+   272→   272→                        <Badge className="bg-brand/10 text-brand border-brand/20 hover:bg-brand/10">
+   273→   273→                          {active.targetRole}
+   274→   274→                        </Badge>
+   275→   275→                        <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+   276→   276→                          <Clock className="h-3 w-3" /> {sumMonths(active.roadmap)} to target
+   277→   277→                        </span>
+   278→   278→                      </div>
+   279→   279→                      <div>
+   280→   280→                        <div className="text-xs text-muted-foreground mb-1.5">Next moves</div>
+   281→   281→                        <div className="flex flex-wrap gap-1.5">
+   282→   282→                          {(active.nextMoves ?? []).slice(0, 3).map((m, i) => (
+   283→   283→                            <span
+   284→   284→                              key={i}
+   285→   285→                              className="inline-flex items-center gap-1 rounded-full border bg-muted/40 px-2.5 py-1 text-xs font-medium"
+   286→   286→                            >
+   287→   287→                              <span className="h-1.5 w-1.5 rounded-full bg-brand" />
+   288→   288→                              {m}
+   289→   289→                            </span>
+   290→   290→                          ))}
+   291→   291→                          {(active.nextMoves ?? []).length === 0 && (
+   292→   292→                            <span className="text-xs text-muted-foreground">No quick moves</span>
+   293→   293→                          )}
+   294→   294→                        </div>
+   295→   295→                      </div>
+   296→   296→                    </div>
+   297→   297→                  </div>
+   298→   298→                </CardContent>
+   299→   299→              </Card>
+   300→   300→
+   301→   301→              {/* ROADMAP TIMELINE */}
+   302→   302→              <Card>
+   303→   303→                <CardHeader className="pb-2">
+   304→   304→                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+   305→   305→                    <Compass className="h-4 w-4 text-brand" /> Roadmap
+   306→   306→                    <Badge variant="secondary" className="text-[10px]">
+   307→   307→                      {active.roadmap.length} phases
+   308→   308→                    </Badge>
+   309→   309→                  </CardTitle>
+   310→   310→                </CardHeader>
+   311→   311→                <CardContent>
+   312→   312→                  {active.roadmap.length === 0 ? (
+   313→   313→                    <p className="text-sm text-muted-foreground py-4 text-center">
+   314→   314→                      No roadmap phases returned.
+   315→   315→                    </p>
+   316→   316→                  ) : (
+   317→   317→                    <div className="relative ps-6">
+   318→   318→                      <div className="absolute start-2 top-2 bottom-2 w-0.5 bg-border" />
+   319→   319→                      {active.roadmap.map((phase, i) => (
+   320→   320→                        <motion.div
+   321→   321→                          key={i}
+   322→   322→                          initial={{ opacity: 0, x: 10 }}
+   323→   323→                          animate={{ opacity: 1, x: 0 }}
+   324→   324→                          transition={{ delay: i * 0.08 }}
+   325→   325→                          className="relative pb-6 last:pb-0"
+   326→   326→                        >
+   327→   327→                          <div className="absolute -start-[18px] top-1 h-3.5 w-3.5 rounded-full bg-brand ring-4 ring-brand/20" />
+   328→   328→                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+   329→   329→                            <span className="text-sm font-semibold">{phase.phase}</span>
+   330→   330→                            <Badge variant="secondary" className="text-[10px]">
+   331→   331→                              {phase.duration}
+   332→   332→                            </Badge>
+   333→   333→                          </div>
+   334→   334→                          {phase.focus && (
+   335→   335→                            <p className="text-xs text-muted-foreground mb-2">{phase.focus}</p>
+   336→   336→                          )}
+   337→   337→                          {phase.milestones?.length > 0 && (
+   338→   338→                            <div className="space-y-1 mb-2">
+   339→   339→                              {phase.milestones.map((m, j) => (
+   340→   340→                                <div key={j} className="flex items-start gap-1.5 text-xs">
+   341→   341→                                  <CheckCircle2 className="h-3 w-3 text-brand mt-0.5 shrink-0" />
+   342→   342→                                  <span>{m}</span>
+   343→   343→                                </div>
+   344→   344→                              ))}
+   345→   345→                            </div>
+   346→   346→                          )}
+   347→   347→                          {phase.skills?.length > 0 && (
+   348→   348→                            <div className="flex flex-wrap gap-1 mb-2">
+   349→   349→                              {phase.skills.map((s, j) => (
+   350→   350→                                <span
+   351→   351→                                  key={j}
+   352→   352→                                  className="inline-flex items-center rounded-md bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium"
+   353→   353→                                >
+   354→   354→                                  {s}
+   355→   355→                                </span>
+   356→   356→                              ))}
+   357→   357→                            </div>
+   358→   358→                          )}
+   359→   359→                          {phase.visibilityMoves?.length > 0 && (
+   360→   360→                            <div className="rounded-lg border border-brand/20 bg-brand/5 p-2.5">
+   361→   361→                              <div className="flex items-center gap-1 mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand">
+   362→   362→                                <Eye className="h-3 w-3" /> Visibility moves
+   363→   363→                              </div>
+   364→   364→                              <div className="space-y-1">
+   365→   365→                                {phase.visibilityMoves.map((v, j) => (
+   366→   366→                                  <div key={j} className="flex items-start gap-1.5 text-xs">
+   367→   367→                                    <ArrowRight className="h-3 w-3 text-brand mt-0.5 shrink-0" />
+   368→   368→                                    <span>{v}</span>
+   369→   369→                                  </div>
+   370→   370→                                ))}
+   371→   371→                              </div>
+   372→   372→                            </div>
+   373→   373→                          )}
+   374→   374→                        </motion.div>
+   375→   375→                      ))}
+   376→   376→                    </div>
+   377→   377→                  )}
+   378→   378→                </CardContent>
+   379→   379→              </Card>
+   380→   380→
+   381→   381→              {/* SALARY + PROMOTION GRID */}
+   382→   382→              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   383→   383→                {/* SALARY STRATEGY */}
+   384→   384→                <Card>
+   385→   385→                  <CardHeader className="pb-2">
+   386→   386→                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+   387→   387→                      <CircleDollarSign className="h-4 w-4 text-brand" /> Salary strategy
+   388→   388→                    </CardTitle>
+   389→   389→                  </CardHeader>
+   390→   390→                  <CardContent className="space-y-3">
+   391→   391→                    {active.salaryStrategy ? (
+   392→   392→                      <>
+   393→   393→                        <div className="grid grid-cols-2 gap-2">
+   394→   394→                          <div className="rounded-lg border p-2.5">
+   395→   395→                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   396→   396→                              Current
+   397→   397→                            </div>
+   398→   398→                            <div className="text-sm font-semibold mt-0.5">
+   399→   399→                              {active.salaryStrategy.current || '—'}
+   400→   400→                            </div>
+   401→   401→                          </div>
+   402→   402→                          <div className="rounded-lg border border-brand/30 bg-brand/5 p-2.5">
+   403→   403→                            <div className="text-[10px] uppercase tracking-wide text-brand">
+   404→   404→                              Target
+   405→   405→                            </div>
+   406→   406→                            <div className="text-sm font-semibold mt-0.5">
+   407→   407→                              {active.salaryStrategy.target || '—'}
+   408→   408→                            </div>
+   409→   409→                          </div>
+   410→   410→                        </div>
+   411→   411→                        {active.salaryStrategy.steps?.length > 0 && (
+   412→   412→                          <div>
+   413→   413→                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+   414→   414→                              Steps
+   415→   415→                            </div>
+   416→   416→                            <div className="space-y-1">
+   417→   417→                              {active.salaryStrategy.steps.map((s, i) => (
+   418→   418→                                <div key={i} className="flex items-start gap-1.5 text-xs">
+   419→   419→                                  <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[9px] font-bold text-brand">
+   420→   420→                                    {i + 1}
+   421→   421→                                  </span>
+   422→   422→                                  <span>{s}</span>
+   423→   423→                                </div>
+   424→   424→                              ))}
+   425→   425→                            </div>
+   426→   426→                          </div>
+   427→   427→                        )}
+   428→   428→                        {active.salaryStrategy.negotiation && (
+   429→   429→                          <div className="rounded-lg bg-muted/40 p-2.5">
+   430→   430→                            <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">
+   431→   431→                              Negotiation tip
+   432→   432→                            </div>
+   433→   433→                            <p className="text-xs leading-relaxed">
+   434→   434→                              {active.salaryStrategy.negotiation}
+   435→   435→                            </p>
+   436→   436→                          </div>
+   437→   437→                        )}
+   438→   438→                      </>
+   439→   439→                    ) : (
+   440→   440→                      <p className="text-sm text-muted-foreground py-2">No salary strategy.</p>
+   441→   441→                    )}
+   442→   442→                  </CardContent>
+   443→   443→                </Card>
+   444→   444→
+   445→   445→                {/* PROMOTION PLAN */}
+   446→   446→                <Card>
+   447→   447→                  <CardHeader className="pb-2">
+   448→   448→                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+   449→   449→                      <Rocket className="h-4 w-4 text-brand" /> Promotion plan
+   450→   450→                    </CardTitle>
+   451→   451→                  </CardHeader>
+   452→   452→                  <CardContent className="space-y-3">
+   453→   453→                    {active.promotionPlan ? (
+   454→   454→                      <>
+   455→   455→                        {active.promotionPlan.gapToNext && (
+   456→   456→                          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-2.5">
+   457→   457→                            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-0.5">
+   458→   458→                              <Target className="h-3 w-3" /> Gap to next level
+   459→   459→                            </div>
+   460→   460→                            <p className="text-xs">{active.promotionPlan.gapToNext}</p>
+   461→   461→                          </div>
+   462→   462→                        )}
+   463→   463→                        {active.promotionPlan.scope?.length > 0 && (
+   464→   464→                          <div>
+   465→   465→                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+   466→   466→                              Scope expansion
+   467→   467→                            </div>
+   468→   468→                            <div className="flex flex-wrap gap-1">
+   469→   469→                              {active.promotionPlan.scope.map((s, i) => (
+   470→   470→                                <span
+   471→   471→                                  key={i}
+   472→   472→                                  className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px]"
+   473→   473→                                >
+   474→   474→                                  {s}
+   475→   475→                                </span>
+   476→   476→                              ))}
+   477→   477→                            </div>
+   478→   478→                          </div>
+   479→   479→                        )}
+   480→   480→                        {active.promotionPlan.evidence?.length > 0 && (
+   481→   481→                          <div>
+   482→   482→                            <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1.5">
+   483→   483→                              Evidence to build
+   484→   484→                            </div>
+   485→   485→                            <div className="space-y-1">
+   486→   486→                              {active.promotionPlan.evidence.map((e, i) => (
+   487→   487→                                <div key={i} className="flex items-start gap-1.5 text-xs">
+   488→   488→                                  <CheckCircle2 className="h-3 w-3 text-brand mt-0.5 shrink-0" />
+   489→   489→                                  <span>{e}</span>
+   490→   490→                                </div>
+   491→   491→                              ))}
+   492→   492→                            </div>
+   493→   493→                          </div>
+   494→   494→                        )}
+   495→   495→                        {active.promotionPlan.conversation && (
+   496→   496→                          <div className="rounded-lg bg-brand/5 border border-brand/20 p-2.5">
+   497→   497→                            <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand mb-1">
+   498→   498→                              <Quote className="h-3 w-3" /> Conversation script
+   499→   499→                            </div>
+   500→   500→                            <p className="text-xs leading-relaxed italic">
+   501→   501→                              {active.promotionPlan.conversation}
+   502→   502→                            </p>
+   503→   503→                          </div>
+   504→   504→                        )}
+   505→   505→                      </>
+   506→   506→                    ) : (
+   507→   507→                      <p className="text-sm text-muted-foreground py-2">No promotion plan.</p>
+   508→   508→                    )}
+   509→   509→                  </CardContent>
+   510→   510→                </Card>
+   511→   511→              </div>
+   512→   512→
+   513→   513→              {/* MARKET INSIGHTS */}
+   514→   514→              {active.marketInsights.length > 0 && (
+   515→   515→                <Card>
+   516→   516→                  <CardHeader className="pb-2">
+   517→   517→                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+   518→   518→                      <Lightbulb className="h-4 w-4 text-brand" /> Market insights
+   519→   519→                    </CardTitle>
+   520→   520→                  </CardHeader>
+   521→   521→                  <CardContent>
+   522→   522→                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+   523→   523→                      {active.marketInsights.map((m, i) => (
+   524→   524→                        <motion.div
+   525→   525→                          key={i}
+   526→   526→                          initial={{ opacity: 0, y: 8 }}
+   527→   527→                          animate={{ opacity: 1, y: 0 }}
+   528→   528→                          transition={{ delay: i * 0.06 }}
+   529→   529→                          className="rounded-lg border p-3 hover:border-brand/40 hover:bg-brand/5 transition-colors"
+   530→   530→                        >
+   531→   531→                          <div className="flex items-center gap-1.5 mb-1">
+   532→   532→                            <TrendingUp className="h-3.5 w-3.5 text-brand" />
+   533→   533→                            <span className="text-xs font-semibold">{m.topic}</span>
+   534→   534→                          </div>
+   535→   535→                          <p className="text-xs text-muted-foreground mb-1.5 leading-relaxed">
+   536→   536→                            {m.insight}
+   537→   537→                          </p>
+   538→   538→                          {m.action && (
+   539→   539→                            <div className="flex items-start gap-1 text-[11px] font-medium text-brand">
+   540→   540→                              <ArrowRight className="h-3 w-3 mt-0.5 shrink-0" />
+   541→   541→                              <span>{m.action}</span>
+   542→   542→                            </div>
+   543→   543→                          )}
+   544→   544→                        </motion.div>
+   545→   545→                      ))}
+   546→   546→                    </div>
+   547→   547→                  </CardContent>
+   548→   548→                </Card>
+   549→   549→              )}
+   550→   550→            </motion.div>
+   551→   551→          )}
+   552→   552→        </div>
+   553→   553→
+   554→   554→        {/* HISTORY SIDEBAR */}
+   555→   555→        <div className="lg:sticky lg:top-4 lg:self-start">
+   556→   556→          <Card className="h-full">
+   557→   557→            <CardHeader className="pb-2">
+   558→   558→              <CardTitle className="text-sm font-medium flex items-center gap-2">
+   559→   559→                <History className="h-4 w-4 text-muted-foreground" /> Plan history
+   560→   560→              </CardTitle>
+   561→   561→            </CardHeader>
+   562→   562→            <CardContent>
+   563→   563→              {historyLoading ? (
+   564→   564→                <div className="flex items-center justify-center py-8">
+   565→   565→                  <Spinner className="text-brand" />
+   566→   566→                </div>
+   567→   567→              ) : plans.length === 0 ? (
+   568→   568→                <div className="py-8 text-center">
+   569→   569→                  <Compass className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+   570→   570→                  <p className="text-xs text-muted-foreground">No plans yet.</p>
+   571→   571→                  <p className="text-xs text-muted-foreground/70">Generate your first roadmap.</p>
+   572→   572→                </div>
+   573→   573→              ) : (
+   574→   574→                <ScrollArea className="max-h-96 -me-2 pe-2">
+   575→   575→                  <div className="space-y-1.5">
+   576→   576→                    {plans.map((p) => {
+   577→   577→                      const isActive = active?.id === p.id
+   578→   578→                      return (
+   579→   579→                        <button
+   580→   580→                          key={p.id}
+   581→   581→                          onClick={() => setActive(p)}
+   582→   582→                          className={`w-full text-start rounded-lg border p-2.5 transition-all hover:border-brand/40 ${
+   583→   583→                            isActive
+   584→   584→                              ? 'border-brand/50 bg-brand/5 ring-1 ring-brand/20'
+   585→   585→                              : 'border-border bg-card hover:bg-muted/30'
+   586→   586→                          }`}
+   587→   587→                        >
+   588→   588→                          <div className="flex items-center justify-between gap-2 mb-1">
+   589→   589→                            <span className="text-xs font-semibold truncate">{p.targetRole}</span>
+   590→   590→                            {typeof p.readinessScore === 'number' && (
+   591→   591→                              <Badge
+   592→   592→                                variant="outline"
+   593→   593→                                className="h-4 px-1 text-[9px] shrink-0 border-brand/40 text-brand"
+   594→   594→                              >
+   595→   595→                                {p.readinessScore}
+   596→   596→                              </Badge>
+   597→   597→                            )}
+   598→   598→                          </div>
+   599→   599→                          <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+   600→   600→                            <span>{p.roadmap?.length ?? 0} phases</span>
+   601→   601→                            <span>{timeAgo(p.createdAt)}</span>
+   602→   602→                          </div>
+   603→   603→                        </button>
+   604→   604→                      )
+   605→   605→                    })}
+   606→   606→                  </div>
+   607→   607→                </ScrollArea>
+   608→   608→              )}
+   609→   609→            </CardContent>
+   610→   610→          </Card>
+   611→   611→        </div>
+   612→   612→      </div>
+   613→   613→    </div>
+   614→   614→  )
+   615→   615→}
+   616→   616→
+   617→   617→// ---------------------------------------------------------------------------
+   618→   618→// Readiness ring (SVG, animated)
+   619→   619→// ---------------------------------------------------------------------------
+   620→   620→function ReadinessRing({ score }: { score: number }) {
+   621→   621→  const v = Math.max(0, Math.min(100, score || 0))
+   622→   622→  const r = 34
+   623→   623→  const c = 2 * Math.PI * r
+   624→   624→  const offset = c - (v / 100) * c
+   625→   625→  const tone =
+   626→   626→    v >= 75 ? 'text-brand' : v >= 50 ? 'text-amber-500' : 'text-destructive'
+   627→   627→  return (
+   628→   628→    <div className="relative h-24 w-24 shrink-0 mx-auto sm:mx-0">
+   629→   629→      <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
+   630→   630→        <circle cx="40" cy="40" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-muted/30" />
+   631→   631→        <motion.circle
+   632→   632→          cx="40"
+   633→   633→          cy="40"
+   634→   634→          r={r}
+   635→   635→          fill="none"
+   636→   636→          stroke="currentColor"
+   637→   637→          strokeWidth="6"
+   638→   638→          strokeLinecap="round"
+   639→   639→          strokeDasharray={c}
+   640→   640→          initial={{ strokeDashoffset: c }}
+   641→   641→          animate={{ strokeDashoffset: offset }}
+   642→   642→          transition={{ duration: 1, ease: 'easeOut' }}
+   643→   643→          className={tone}
+   644→   644→        />
+   645→   645→      </svg>
+   646→   646→      <div className="absolute inset-0 flex flex-col items-center justify-center">
+   647→   647→        <span className={`text-xl font-bold ${tone}`}>{v}</span>
+   648→   648→        <span className="text-[9px] uppercase tracking-wide text-muted-foreground">ready</span>
+   649→   649→      </div>
+   650→   650→    </div>
+   651→   651→  )
+   652→   652→}
+   653→   653→

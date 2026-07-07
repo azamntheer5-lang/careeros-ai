@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Progress } from '@/components/ui/progress'
-import { ScanSearch, Sparkles, CheckCircle2, AlertTriangle, XCircle, TrendingUp, FileSearch, Target } from 'lucide-react'
+import { ScanSearch, Sparkles, CheckCircle2, AlertTriangle, XCircle, TrendingUp, FileSearch, Target, Eye, Users } from 'lucide-react'
 
 type Analysis = {
   score: number; grade: string
@@ -39,6 +39,10 @@ export function AtsModule() {
   const [job, setJob] = useState('')
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [busy, setBusy] = useState(false)
+  const [sim, setSim] = useState<any>(null)
+  const [simBusy, setSimBusy] = useState(false)
+  const [comp, setComp] = useState<any>(null)
+  const [compBusy, setCompBusy] = useState(false)
 
   useEffect(() => {
     api<{ resumes: any[] }>('/api/resumes').then(({ resumes }) => {
@@ -61,6 +65,30 @@ export function AtsModule() {
     } catch (e) {
       toast({ title: 'Analysis failed', description: (e as Error).message, variant: 'destructive' })
     } finally { setBusy(false) }
+  }
+
+  const runSim = async () => {
+    if (!resumeId && !resumeText.trim()) return
+    setSimBusy(true); setSim(null)
+    try {
+      const { simulation } = await api<{ simulation: any }>('/api/ats/recruiter', {
+        method: 'POST', body: { resumeId: resumeId || undefined, resumeText: resumeText || undefined },
+      })
+      setSim(simulation)
+    } catch (e) { toast({ title: 'Failed', description: (e as Error).message, variant: 'destructive' }) }
+    finally { setSimBusy(false) }
+  }
+
+  const runComp = async () => {
+    if (!job.trim() || (!resumeId && !resumeText.trim())) return
+    setCompBusy(true); setComp(null)
+    try {
+      const { comparison } = await api<{ comparison: any }>('/api/ats/competitor', {
+        method: 'POST', body: { resumeId: resumeId || undefined, resumeText: resumeText || undefined, jobDescription: job },
+      })
+      setComp(comparison)
+    } catch (e) { toast({ title: 'Failed', description: (e as Error).message, variant: 'destructive' }) }
+    finally { setCompBusy(false) }
   }
 
   return (
@@ -96,6 +124,14 @@ export function AtsModule() {
             <Button onClick={analyze} disabled={busy} className="w-full bg-brand text-brand-foreground hover:bg-brand/90 rounded-full">
               {busy ? <><Spinner /> {t('analyzing')}</> : <><Sparkles className="h-4 w-4" /> {t('analyze')}</>}
             </Button>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button onClick={runSim} disabled={simBusy || (!resumeId && !resumeText.trim())} variant="outline" size="sm" className="rounded-full text-xs">
+                {simBusy ? <Spinner /> : <Eye className="h-3.5 w-3.5" />} Recruiter Sim
+              </Button>
+              <Button onClick={runComp} disabled={compBusy || !job.trim() || (!resumeId && !resumeText.trim())} variant="outline" size="sm" className="rounded-full text-xs">
+                {compBusy ? <Spinner /> : <Users className="h-3.5 w-3.5" />} vs Competitor
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -205,6 +241,84 @@ export function AtsModule() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Recruiter simulation */}
+      {sim && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Eye className="h-4 w-4 text-brand" /> Recruiter 6-Second Simulation</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-center">
+                  <ScoreRing score={sim.confidenceScore} color="var(--brand)" />
+                  <span className="text-[10px] text-muted-foreground mt-1">confidence</span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-semibold capitalize">Verdict:</span>
+                    <Badge className={sim.verdict === 'advance' ? 'bg-brand/15 text-brand border-brand/30' : sim.verdict === 'maybe' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30' : 'bg-destructive/15 text-destructive border-destructive/30'} variant="outline">{sim.verdict}</Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{sim.snapJudgment}</p>
+                </div>
+              </div>
+              <div className="text-sm"><span className="font-medium">First impression:</span> <span className="text-muted-foreground">{sim.firstImpression}</span></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-medium text-brand mb-1.5">What stood out</div>
+                  <ul className="space-y-1">{sim.whatStoodOut?.map((s: string, i: number) => <li key={i} className="text-xs text-muted-foreground flex gap-1.5"><span className="text-brand">•</span>{s}</li>)}</ul>
+                </div>
+                <div>
+                  <div className="text-xs font-medium text-amber-500 mb-1.5">What was skipped</div>
+                  <ul className="space-y-1">{sim.whatWasSkipped?.map((s: string, i: number) => <li key={i} className="text-xs text-muted-foreground flex gap-1.5"><span className="text-amber-500">•</span>{s}</li>)}</ul>
+                </div>
+              </div>
+              {sim.redFlags?.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-destructive mb-1.5">Red flags</div>
+                  <ul className="space-y-1">{sim.redFlags.map((s: string, i: number) => <li key={i} className="text-xs text-muted-foreground flex gap-1.5"><span className="text-destructive">!</span>{s}</li>)}</ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      {/* Competitor comparison */}
+      {comp && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4 text-brand" /> Competitor Comparison</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">You</div>
+                  <ScoreRing score={comp.candidateScore} color="var(--brand)" />
+                </div>
+                <div className="rounded-lg border p-3 text-center">
+                  <div className="text-xs text-muted-foreground mb-1">Ideal competitor</div>
+                  <ScoreRing score={comp.competitorScore} color="oklch(0.65 0.2 30)" />
+                </div>
+              </div>
+              {comp.hiddenKeywords?.length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-brand mb-1.5">Hidden keywords (not in the JD but recruiters expect them)</div>
+                  <div className="flex flex-wrap gap-1.5">{comp.hiddenKeywords.map((k: string, i: number) => <Badge key={i} variant="outline" className="border-brand/40 text-brand">{k}</Badge>)}</div>
+                </div>
+              )}
+              <div className="space-y-2">
+                {comp.edge?.map((e: any, i: number) => (
+                  <div key={i} className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center rounded-lg border p-2.5 text-xs">
+                    <div className={`text-start ${e.winner === 'candidate' ? 'text-brand font-medium' : 'text-muted-foreground'}`}>{e.candidate}</div>
+                    <Badge variant="outline" className="justify-self-center text-[9px]">{e.area}</Badge>
+                    <div className={`text-end ${e.winner === 'competitor' ? 'text-amber-600 font-medium' : 'text-muted-foreground'}`}>{e.competitor}</div>
+                  </div>
+                ))}
+              </div>
+              {comp.advice && <div className="rounded-lg bg-brand-soft/40 border border-brand/20 p-3 text-sm">{comp.advice}</div>}
             </CardContent>
           </Card>
         </motion.div>

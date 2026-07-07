@@ -60,7 +60,9 @@ export type ResumeMeta = {
   accent: string
   font: string
   spacing: string
+  careerMode?: string | null
   atsScore: number | null
+  aiScore?: number | null
   version: number
   updatedAt: string
   data: ResumeData
@@ -117,9 +119,11 @@ export type Interview = {
   type: string
   role: string
   company: string | null
+  mode: string
   status: string
   messages: InterviewMessage[]
   score: number | null
+  confidence?: number | null
   summary: string | null
   updatedAt: string
 }
@@ -131,6 +135,21 @@ export const TEMPLATES = [
   { id: 'creative', name: 'Creative', desc: 'Two-column with sidebar' },
   { id: 'ats', name: 'ATS-Safe', desc: 'Plain, parser-friendly' },
   { id: 'minimal', name: 'Minimal', desc: 'Maximum whitespace' },
+  { id: 'developer', name: 'Developer', desc: 'Code-forward, GitHub-ready' },
+  { id: 'designer', name: 'Designer', desc: 'Visual-first, portfolio-driven' },
+  { id: 'academic', name: 'Academic', desc: 'Publications & citations focus' },
+  { id: 'medical', name: 'Medical', desc: 'Credential & licensing forward' },
+  { id: 'government', name: 'Government', desc: 'Federal-style, KSAs compliant' },
+] as const
+
+export const CAREER_MODES = [
+  { id: 'developer', name: 'Developer', icon: 'Code2' },
+  { id: 'designer', name: 'Designer', icon: 'Palette' },
+  { id: 'executive', name: 'Executive', icon: 'Briefcase' },
+  { id: 'academic', name: 'Academic', icon: 'GraduationCap' },
+  { id: 'medical', name: 'Medical', icon: 'Stethoscope' },
+  { id: 'government', name: 'Government', icon: 'Landmark' },
+  { id: 'general', name: 'General', icon: 'User' },
 ] as const
 
 export const ACCENTS = [

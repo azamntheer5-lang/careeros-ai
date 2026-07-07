@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppProvider } from "@/components/app-provider";
+import { ProfileProvider } from "@/components/careeros/profile-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +22,8 @@ export const metadata: Metadata = {
   description: "Create, optimize and grow your entire professional career with AI. Resume engine, ATS intelligence, interview simulator, career coach and more.",
   keywords: ["AI career", "resume builder", "ATS", "interview simulator", "career coach", "job tracker"],
   authors: [{ name: "CareerOS AI" }],
-  icons: { icon: "/logo.svg" },
+  icons: { icon: "/logo.svg", apple: "/logo.svg" },
+  manifest: "/manifest.json",
   openGraph: {
     title: "CareerOS AI",
     description: "The AI Career Operating System",
@@ -39,9 +41,11 @@ export default function RootLayout({
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
           <AppProvider>
-            {children}
-            <Toaster />
-            <SonnerToaster richColors position="top-center" />
+            <ProfileProvider>
+              {children}
+              <Toaster />
+              <SonnerToaster richColors position="top-center" />
+            </ProfileProvider>
           </AppProvider>
         </ThemeProvider>
       </body>

@@ -1,31 +1,30 @@
 'use client'
 
 import {
-  LayoutDashboard,
-  FileText,
-  ScanSearch,
-  Mail,
-  Mic,
-  BrainCircuit,
-  Briefcase,
-  GraduationCap,
-  ShieldCheck,
-  Sparkles,
+  LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
+  Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
+  Sparkles, Command,
 } from 'lucide-react'
 import { useAppStore, ModuleId } from '@/lib/store'
 import { useApp } from '@/components/app-provider'
+import { useProfile } from '@/components/careeros/profile-context'
 import { Logo } from './logo'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { DictKey } from '@/lib/i18n'
+import { motion } from 'framer-motion'
 
-type NavItem = { id: ModuleId; icon: React.ElementType; label: DictKey; badge?: string }
+type NavItem = { id: ModuleId; icon: React.ElementType; label: DictKey }
 
 const NAV: { section: string; items: NavItem[] }[] = [
   {
-    section: 'overview',
-    items: [{ id: 'dashboard', icon: LayoutDashboard, label: 'dashboard' }],
+    section: 'you',
+    items: [
+      { id: 'dashboard', icon: LayoutDashboard, label: 'dashboard' },
+      { id: 'profile', icon: UserCircle2, label: 'profile' },
+    ],
   },
   {
     section: 'build',
@@ -33,6 +32,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { id: 'resume', icon: FileText, label: 'resume' },
       { id: 'ats', icon: ScanSearch, label: 'ats' },
       { id: 'cover', icon: Mail, label: 'coverLetter' },
+      { id: 'portfolio', icon: Globe, label: 'portfolio' },
+      { id: 'branding', icon: BadgeCheck, label: 'branding' },
     ],
   },
   {
@@ -40,6 +41,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { id: 'interview', icon: Mic, label: 'interview' },
       { id: 'coach', icon: BrainCircuit, label: 'coach' },
+      { id: 'intelligence', icon: Compass, label: 'intelligence' },
       { id: 'skills', icon: GraduationCap, label: 'skills' },
     ],
   },
@@ -47,14 +49,17 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: 'manage',
     items: [
       { id: 'jobs', icon: Briefcase, label: 'jobs' },
+      { id: 'aicenter', icon: Cpu, label: 'aicenter' },
+      { id: 'plans', icon: CreditCard, label: 'plans' },
       { id: 'admin', icon: ShieldCheck, label: 'admin' },
     ],
   },
 ]
 
 export function Sidebar() {
-  const { active, set } = useAppStore()
+  const { active, set, setPalette } = useAppStore()
   const { t } = useApp()
+  const { profile } = useProfile()
 
   return (
     <aside className="hidden lg:flex w-64 shrink-0 flex-col border-e border-sidebar-border bg-sidebar">
@@ -66,8 +71,20 @@ export function Sidebar() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-6">
+      {/* Command palette trigger */}
+      <div className="p-3">
+        <button
+          onClick={() => setPalette(true)}
+          className="group flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground hover:border-brand/40 hover:bg-brand-soft/40 transition-colors"
+        >
+          <Command className="h-3.5 w-3.5" />
+          <span className="flex-1 text-start">{t('searchOrJump')}</span>
+          <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border bg-background px-1 py-0.5 text-[9px] font-mono">⌘K</kbd>
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1 px-3 pb-2">
+        <nav className="space-y-5">
           {NAV.map((group) => (
             <div key={group.section}>
               <div className="px-3 mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground/70">
@@ -89,13 +106,10 @@ export function Sidebar() {
                       )}
                     >
                       {isActive && (
-                        <span className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-brand" />
+                        <motion.span layoutId="nav-active" className="absolute inset-y-1.5 start-0 w-1 rounded-full bg-brand" />
                       )}
                       <Icon className={cn('h-4 w-4 shrink-0', isActive ? 'text-brand' : 'text-muted-foreground group-hover:text-foreground')} />
                       <span className="truncate">{t(item.label)}</span>
-                      {item.badge && (
-                        <Badge variant="secondary" className="ms-auto h-5 px-1.5 text-[10px]">{item.badge}</Badge>
-                      )}
                     </button>
                   )
                 })}
@@ -109,11 +123,16 @@ export function Sidebar() {
         <div className="rounded-xl bg-gradient-to-br from-brand/15 to-transparent p-3.5 border border-brand/20">
           <div className="flex items-center gap-2 mb-1">
             <Sparkles className="h-3.5 w-3.5 text-brand" />
-            <span className="text-xs font-semibold">{t('premium')} Plan</span>
+            <span className="text-xs font-semibold">{profile?.targetRole ? 'AI is personalized' : 'Set up your profile'}</span>
           </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            Unlimited AI generations, all templates, priority models.
+          <p className="text-[11px] text-muted-foreground leading-relaxed truncate">
+            {profile?.targetRole ? `Targeting: ${profile.targetRole}` : 'Complete your profile to power every AI feature.'}
           </p>
+          {!profile?.targetRole && (
+            <Button size="sm" className="mt-2 w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90 text-[11px] h-7" onClick={() => set('profile')}>
+              {t('profile')}
+            </Button>
+          )}
         </div>
       </div>
     </aside>

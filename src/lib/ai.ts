@@ -244,3 +244,86 @@ export const ai = {
     ])
   },
 }
+
+// ---------------------------------------------------------------------------
+// PHASE 2 — Orchestrated AI Gateway
+// Prompt-registry + memory + model routing + usage tracking.
+// ---------------------------------------------------------------------------
+
+import { db } from '@/lib/db'
+import { PROMPTS, ModelTier } from '@/lib/prompts'
+import { loadProfileMemory, memoryBlock, CareerProfileMemory } from '@/lib/ai-memory'
+
+/** Estimated per-tier token cost multipliers (for the usage dashboard). */
+const TIER_COST: Record<ModelTier, number> = { fast: 0.5, balanced: 1, quality: 2.2 }
+
+/** Track an AI usage event with routing + cost metadata. */
+export async function trackUsage(
+  userId: string,
+  feature: string,
+  promptKey: string,
+  tokens: number,
+  success = true,
+  latencyMs?: number
+) {
+  const tier = PROMPTS[promptKey]?.model ?? 'balanced'
+  try {
+    await db.aiUsage.create({
+      data: {
+        userId, feature,
+        model: tier,
+        tokens,
+        cost: Number((tokens * TIER_COST[tier] * 0.00002).toFixed(6)),
+        latencyMs,
+        success,
+      },
+    })
+  } catch {}
+}
+
+export type RunResult<T> = { data: T; tokens: number; model: ModelTier; latencyMs: number }
+
+/**
+ * Orchestrated run: composes registry system + memory + caller messages,
+ * routes to the configured model tier, parses JSON if requested, and tracks usage.
+ */
+export async function run<T = string>(
+  promptKey: string,
+  userId: string,
+  userName: string,
+  caller: ChatMessage[],
+  opts: { json?: boolean } = {}
+): Promise<RunResult<T>> {
+  const def = PROMPTS[promptKey] ?? { key: promptKey, version: 1, model: 'balanced' as ModelTier, system: 'You are a helpful assistant.' }
+  const t0 = Date.now()
+  let memory: CareerProfileMemory | null = null
+  try { memory = await loadProfileMemory(userId) } catch {}
+
+  const sys: string[] = [def.system]
+  if (memory) {
+    const block = memoryBlock(memory, userName)
+    if (block) sys.push(block)
+  }
+  const messages: ChatMessage[] = [{ role: 'system', content: sys.join('\n\n') }, ...caller]
+
+  let tokens = 0
+  let data: T
+  if (opts.json) {
+    const res = await completeJson<T>(messages)
+    data = res.data
+    tokens = res.tokens
+  } else {
+    const text = await complete(messages)
+    data = text as unknown as T
+    tokens = Math.ceil(text.length / 4)
+  }
+  const latencyMs = Date.now() - t0
+  await trackUsage(userId, def.key, promptKey, tokens, true, latencyMs)
+  return { data, tokens, model: def.model, latencyMs }
+}
+
+/** Tracked wrapper that returns raw text (for chat-style modules). */
+export async function runText(promptKey: string, userId: string, userName: string, caller: ChatMessage[]) {
+  return run<string>(promptKey, userId, userName, caller, { json: false })
+}
+
