@@ -1,0 +1,1404 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→import { Spinner } from '@/components/careeros/loading'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    17→import { Switch } from '@/components/ui/switch'
+    18→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    19→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+    20→import { ScrollArea } from '@/components/ui/scroll-area'
+    21→import { Progress } from '@/components/ui/progress'
+    22→import {
+    23→  Briefcase, Plus, Trash2, Building2, MapPin, Eye, Users, Search, Sparkles,
+    24→  ArrowLeft, X, CheckCircle2, AlertTriangle, AlertCircle, Target, Brain,
+    25→  DollarSign, Wifi, FileText, ChevronRight, Zap, ShieldAlert, Lightbulb,
+    26→} from 'lucide-react'
+    27→
+    28→// ---------------------------------------------------------------------------
+    29→// Types — mirror the API DTOs.
+    30→// ---------------------------------------------------------------------------
+    31→
+    32→type Posting = {
+    33→  id: string
+    34→  title: string
+    35→  company: string
+    36→  location: string | null
+    37→  remote: boolean
+    38→  salary: string | null
+    39→  type: string
+    40→  description: string
+    41→  requirements: string[]
+    42→  skills: string[]
+    43→  status: string
+    44→  views: number
+    45→  applicationCount: number
+    46→  createdAt: string
+    47→}
+    48→
+    49→type Application = {
+    50→  id: string
+    51→  status: string
+    52→  matchScore: number | null
+    53→  matchNotes: MatchResult | null
+    54→  coverLetter: string | null
+    55→  createdAt: string
+    56→  candidate: {
+    57→    id: string
+    58→    name: string
+    59→    headline: string | null
+    60→    email: string
+    61→  }
+    62→}
+    63→
+    64→type Candidate = {
+    65→  id: string
+    66→  name: string
+    67→  headline: string
+    68→  email: string
+    69→  location: string | null
+    70→  targetRole: string | null
+    71→  seniority: string | null
+    72→  experienceYears: number | null
+    73→  skills: string[]
+    74→  summary: string
+    75→  experienceHighlights: string[]
+    76→  matchScore: number
+    77→  isSelf: boolean
+    78→}
+    79→
+    80→type MatchResult = {
+    81→  matchScore: number
+    82→  verdict: string
+    83→  strengths: string[]
+    84→  gaps: string[]
+    85→  risks: string[]
+    86→  interviewFocus: string[]
+    87→  recommendation: string
+    88→}
+    89→
+    90→// ---------------------------------------------------------------------------
+    91→// Visual constants
+    92→// ---------------------------------------------------------------------------
+    93→
+    94→const STATUS_BADGE: Record<string, string> = {
+    95→  open: 'bg-brand/15 text-brand border-brand/30',
+    96→  closed: 'bg-destructive/15 text-destructive border-destructive/30',
+    97→  draft: 'bg-muted text-muted-foreground border-border',
+    98→}
+    99→
+   100→const APP_STATUS_BADGE: Record<string, string> = {
+   101→  submitted: 'bg-sky-500/15 text-sky-600 border-sky-500/30',
+   102→  reviewed: 'bg-brand/15 text-brand border-brand/30',
+   103→  shortlisted: 'bg-violet-500/15 text-violet-600 border-violet-500/30',
+   104→  interview: 'bg-amber-500/15 text-amber-600 border-amber-500/30',
+   105→  rejected: 'bg-destructive/15 text-destructive border-destructive/30',
+   106→  hired: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30',
+   107→}
+   108→
+   109→const TYPE_LABELS: Record<string, string> = {
+   110→  'full-time': 'Full-time',
+   111→  'part-time': 'Part-time',
+   112→  contract: 'Contract',
+   113→  internship: 'Internship',
+   114→}
+   115→
+   116→const JOB_TYPES = ['full-time', 'part-time', 'contract', 'internship']
+   117→
+   118→// ---------------------------------------------------------------------------
+   119→// Main module
+   120→// ---------------------------------------------------------------------------
+   121→
+   122→export function RecruitModule() {
+   123→  const { t } = useApp()
+   124→  const { toast } = useToast()
+   125→  const [postings, setPostings] = useState<Posting[]>([])
+   126→  const [candidates, setCandidates] = useState<Candidate[]>([])
+   127→  const [loading, setLoading] = useState(true)
+   128→  const [showPostJob, setShowPostJob] = useState(false)
+   129→  const [selectedPostingId, setSelectedPostingId] = useState<string | null>(null)
+   130→  const [tab, setTab] = useState<'jobs' | 'search' | 'ai'>('jobs')
+   131→
+   132→  // Pending preselections for cross-tab navigation
+   133→  const [aiJobId, setAiJobId] = useState<string>('')
+   134→  const [aiCandidateId, setAiCandidateId] = useState<string>('')
+   135→
+   136→  const load = useCallback(async () => {
+   137→    try {
+   138→      const res = await api<{ postings: Posting[]; candidates: Candidate[] }>('/api/recruit')
+   139→      setPostings(res.postings)
+   140→      setCandidates(res.candidates)
+   141→    } catch (e) {
+   142→      toast({ title: 'Failed to load', description: (e as Error).message, variant: 'destructive' })
+   143→    } finally {
+   144→      setLoading(false)
+   145→    }
+   146→  }, [toast])
+   147→
+   148→  useEffect(() => {
+   149→    load()
+   150→  }, [load])
+   151→
+   152→  const createPosting = async (form: PostingForm) => {
+   153→    try {
+   154→      const { posting } = await api<{ posting: Posting }>('/api/recruit', {
+   155→        method: 'POST',
+   156→        body: form,
+   157→      })
+   158→      setPostings((p) => [posting, ...p])
+   159→      setShowPostJob(false)
+   160→      toast({ title: 'Job posted', description: `${posting.title} at ${posting.company}` })
+   161→    } catch (e) {
+   162→      toast({ title: 'Failed to post', description: (e as Error).message, variant: 'destructive' })
+   163→    }
+   164→  }
+   165→
+   166→  const updatePosting = async (id: string, patch: Partial<Posting>) => {
+   167→    try {
+   168→      const { posting } = await api<{ posting: Posting }>(`/api/recruit/${id}`, {
+   169→        method: 'PUT',
+   170→        body: patch,
+   171→      })
+   172→      setPostings((p) => p.map((x) => (x.id === id ? posting : x)))
+   173→      toast({ title: 'Posting updated' })
+   174→    } catch (e) {
+   175→      toast({ title: 'Update failed', description: (e as Error).message, variant: 'destructive' })
+   176→    }
+   177→  }
+   178→
+   179→  const deletePosting = async (id: string) => {
+   180→    if (!confirm('Delete this job posting? All applications will be removed too.')) return
+   181→    try {
+   182→      await api(`/api/recruit/${id}`, { method: 'DELETE' })
+   183→      setPostings((p) => p.filter((x) => x.id !== id))
+   184→      if (selectedPostingId === id) setSelectedPostingId(null)
+   185→      toast({ title: 'Posting deleted' })
+   186→    } catch (e) {
+   187→      toast({ title: 'Delete failed', description: (e as Error).message, variant: 'destructive' })
+   188→    }
+   189→  }
+   190→
+   191→  // Cross-tab navigation: jump from a candidate card to the AI Recruiter tab.
+   192→  const analyzeCandidate = (candidateId: string, jobPostingId?: string) => {
+   193→    setAiCandidateId(candidateId)
+   194→    if (jobPostingId) setAiJobId(jobPostingId)
+   195→    else if (!aiJobId && postings[0]) setAiJobId(postings[0].id)
+   196→    setTab('ai')
+   197→  }
+   198→
+   199→  const selectedPosting = selectedPostingId
+   200→    ? postings.find((p) => p.id === selectedPostingId) ?? null
+   201→    : null
+   202→
+   203→  return (
+   204→    <div>
+   205→      <ModuleHeader
+   206→        title={t('recruitTitle')}
+   207→        subtitle={t('recruitSub')}
+   208→        icon={Briefcase}
+   209→        actions={
+   210→          <Button
+   211→            size="sm"
+   212→            className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   213→            onClick={() => setShowPostJob(true)}
+   214→          >
+   215→            <Plus className="h-4 w-4" /> {t('postJob')}
+   216→          </Button>
+   217→        }
+   218→      />
+   219→
+   220→      {loading ? (
+   221→        <div className="flex justify-center py-16">
+   222→          <Spinner className="h-6 w-6 text-brand" />
+   223→        </div>
+   224→      ) : (
+   225→        <Tabs value={tab} onValueChange={(v) => setTab(v as 'jobs' | 'search' | 'ai')} className="w-full">
+   226→          <TabsList className="grid w-full max-w-md grid-cols-3 mb-4">
+   227→            <TabsTrigger value="jobs">My Jobs</TabsTrigger>
+   228→            <TabsTrigger value="search">{t('candidateSearch')}</TabsTrigger>
+   229→            <TabsTrigger value="ai">{t('aiRecruiter')}</TabsTrigger>
+   230→          </TabsList>
+   231→
+   232→          <TabsContent value="jobs">
+   233→            <AnimatePresence mode="wait">
+   234→              {selectedPosting ? (
+   235→                <motion.div key="detail" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
+   236→                  <PostingDetail
+   237→                    posting={selectedPosting}
+   238→                    onBack={() => setSelectedPostingId(null)}
+   239→                    onUpdate={(patch) => updatePosting(selectedPosting.id, patch)}
+   240→                    onDelete={() => deletePosting(selectedPosting.id)}
+   241→                  />
+   242→                </motion.div>
+   243→              ) : (
+   244→                <motion.div key="list" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}>
+   245→                  <PostingsList
+   246→                    postings={postings}
+   247→                    onSelect={(id) => setSelectedPostingId(id)}
+   248→                    onDelete={deletePosting}
+   249→                    onToggleStatus={(p) =>
+   250→                      updatePosting(p.id, { status: p.status === 'open' ? 'closed' : 'open' })
+   251→                    }
+   252→                  />
+   253→                </motion.div>
+   254→              )}
+   255→            </AnimatePresence>
+   256→          </TabsContent>
+   257→
+   258→          <TabsContent value="search">
+   259→            <CandidateSearch
+   260→              candidates={candidates}
+   261→              postings={postings}
+   262→              onMatch={(candidateId, jobPostingId) => analyzeCandidate(candidateId, jobPostingId)}
+   263→            />
+   264→          </TabsContent>
+   265→
+   266→          <TabsContent value="ai">
+   267→            <AIRecruiter
+   268→              postings={postings}
+   269→              candidates={candidates}
+   270→              preselectedJobId={aiJobId}
+   271→              preselectedCandidateId={aiCandidateId}
+   272→            />
+   273→          </TabsContent>
+   274→        </Tabs>
+   275→      )}
+   276→
+   277→      <PostJobDialog
+   278→        open={showPostJob}
+   279→        onOpenChange={setShowPostJob}
+   280→        onCreate={createPosting}
+   281→      />
+   282→    </div>
+   283→  )
+   284→}
+   285→
+   286→// ---------------------------------------------------------------------------
+   287→// My Jobs — list + detail
+   288→// ---------------------------------------------------------------------------
+   289→
+   290→function PostingsList({
+   291→  postings,
+   292→  onSelect,
+   293→  onDelete,
+   294→  onToggleStatus,
+   295→}: {
+   296→  postings: Posting[]
+   297→  onSelect: (id: string) => void
+   298→  onDelete: (id: string) => void
+   299→  onToggleStatus: (p: Posting) => void
+   300→}) {
+   301→  const { t } = useApp()
+   302→  if (postings.length === 0) {
+   303→    return (
+   304→      <Card>
+   305→        <CardContent className="p-10 text-center">
+   306→          <Briefcase className="h-10 w-10 mx-auto text-muted-foreground/40" />
+   307→          <p className="mt-3 text-sm text-muted-foreground">
+   308→            No job postings yet. Click “{t('postJob')}” to publish your first role.
+   309→          </p>
+   310→        </CardContent>
+   311→      </Card>
+   312→    )
+   313→  }
+   314→  return (
+   315→    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+   316→      {postings.map((p, i) => (
+   317→        <motion.div
+   318→          key={p.id}
+   319→          initial={{ opacity: 0, y: 8 }}
+   320→          animate={{ opacity: 1, y: 0 }}
+   321→          transition={{ delay: i * 0.04 }}
+   322→        >
+   323→          <PostingCard
+   324→            posting={p}
+   325→            onSelect={() => onSelect(p.id)}
+   326→            onDelete={() => onDelete(p.id)}
+   327→            onToggleStatus={() => onToggleStatus(p)}
+   328→          />
+   329→        </motion.div>
+   330→      ))}
+   331→    </div>
+   332→  )
+   333→}
+   334→
+   335→function PostingCard({
+   336→  posting,
+   337→  onSelect,
+   338→  onDelete,
+   339→  onToggleStatus,
+   340→}: {
+   341→  posting: Posting
+   342→  onSelect: () => void
+   343→  onDelete: () => void
+   344→  onToggleStatus: () => void
+   345→}) {
+   346→  return (
+   347→    <Card className="group relative h-full overflow-hidden hover:shadow-md transition-shadow">
+   348→      <CardContent className="p-5">
+   349→        <div className="flex items-start justify-between gap-2">
+   350→          <div className="min-w-0 flex-1">
+   351→            <h3 className="text-base font-semibold leading-tight truncate">{posting.title}</h3>
+   352→            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+   353→              <Building2 className="h-3 w-3" /> {posting.company}
+   354→            </div>
+   355→          </div>
+   356→          <Badge variant="outline" className={STATUS_BADGE[posting.status] ?? STATUS_BADGE.open}>
+   357→            {posting.status}
+   358→          </Badge>
+   359→        </div>
+   360→
+   361→        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+   362→          {posting.location && (
+   363→            <span className="flex items-center gap-1">
+   364→              <MapPin className="h-3 w-3" /> {posting.location}
+   365→            </span>
+   366→          )}
+   367→          {posting.remote && (
+   368→            <span className="flex items-center gap-1 text-brand">
+   369→              <Wifi className="h-3 w-3" /> Remote
+   370→            </span>
+   371→          )}
+   372→          {posting.salary && (
+   373→            <span className="flex items-center gap-1">
+   374→              <DollarSign className="h-3 w-3" /> {posting.salary}
+   375→            </span>
+   376→          )}
+   377→          <Badge variant="secondary" className="text-[10px] h-5">
+   378→            {TYPE_LABELS[posting.type] ?? posting.type}
+   379→          </Badge>
+   380→        </div>
+   381→
+   382→        <p className="text-xs text-muted-foreground mt-3 line-clamp-2">{posting.description}</p>
+   383→
+   384→        {posting.skills.length > 0 && (
+   385→          <div className="flex flex-wrap gap-1 mt-3">
+   386→            {posting.skills.slice(0, 3).map((s) => (
+   387→              <Badge key={s} className="bg-brand/10 text-brand border-brand/20 text-[10px]">
+   388→                {s}
+   389→              </Badge>
+   390→            ))}
+   391→            {posting.skills.length > 3 && (
+   392→              <span className="text-[10px] text-muted-foreground self-center">
+   393→                +{posting.skills.length - 3}
+   394→              </span>
+   395→            )}
+   396→          </div>
+   397→        )}
+   398→
+   399→        <div className="flex items-center justify-between mt-4 pt-3 border-t">
+   400→          <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+   401→            <span className="flex items-center gap-1">
+   402→              <Eye className="h-3 w-3" /> {posting.views}
+   403→            </span>
+   404→            <span className="flex items-center gap-1">
+   405→              <Users className="h-3 w-3" /> {posting.applicationCount}
+   406→            </span>
+   407→          </div>
+   408→          <div className="flex items-center gap-1">
+   409→            <Button
+   410→              size="sm"
+   411→              variant="ghost"
+   412→              className="h-7 px-2 text-[11px] rounded-full"
+   413→              onClick={onToggleStatus}
+   414→            >
+   415→              {posting.status === 'open' ? 'Close' : 'Reopen'}
+   416→            </Button>
+   417→            <button
+   418→              onClick={onDelete}
+   419→              className="opacity-0 group-hover:opacity-100 transition text-muted-foreground hover:text-destructive p-1"
+   420→              aria-label="Delete"
+   421→            >
+   422→              <Trash2 className="h-3.5 w-3.5" />
+   423→            </button>
+   424→            <Button
+   425→              size="sm"
+   426→              variant="ghost"
+   427→              className="h-7 px-2 text-[11px] rounded-full hover:bg-brand-soft hover:text-brand"
+   428→              onClick={onSelect}
+   429→            >
+   430→              View <ChevronRight className="h-3 w-3 flip-rtl" />
+   431→            </Button>
+   432→          </div>
+   433→        </div>
+   434→      </CardContent>
+   435→    </Card>
+   436→  )
+   437→}
+   438→
+   439→function PostingDetail({
+   440→  posting,
+   441→  onBack,
+   442→  onUpdate,
+   443→  onDelete,
+   444→}: {
+   445→  posting: Posting
+   446→  onBack: () => void
+   447→  onUpdate: (patch: Partial<Posting>) => void
+   448→  onDelete: () => void
+   449→}) {
+   450→  const { t } = useApp()
+   451→  const [applications, setApplications] = useState<Application[]>([])
+   452→  const [loadingApps, setLoadingApps] = useState(true)
+   453→
+   454→  useEffect(() => {
+   455→    let cancelled = false
+   456→    api<{ applications: Application[] }>(`/api/recruit/${posting.id}`)
+   457→      .then(({ applications }) => {
+   458→        if (!cancelled) setApplications(applications)
+   459→      })
+   460→      .catch(() => {})
+   461→      .finally(() => !cancelled && setLoadingApps(false))
+   462→    return () => {
+   463→      cancelled = true
+   464→    }
+   465→  }, [posting.id])
+   466→
+   467→  return (
+   468→    <div className="space-y-4">
+   469→      <button
+   470→        onClick={onBack}
+   471→        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+   472→      >
+   473→        <ArrowLeft className="h-4 w-4 flip-rtl" /> Back to all jobs
+   474→      </button>
+   475→
+   476→      <Card>
+   477→        <CardContent className="p-6">
+   478→          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+   479→            <div className="flex-1">
+   480→              <div className="flex items-center gap-2 flex-wrap">
+   481→                <h2 className="text-xl font-semibold">{posting.title}</h2>
+   482→                <Badge variant="outline" className={STATUS_BADGE[posting.status] ?? STATUS_BADGE.open}>
+   483→                  {posting.status}
+   484→                </Badge>
+   485→                <Badge variant="secondary" className="text-[10px]">
+   486→                  {TYPE_LABELS[posting.type] ?? posting.type}
+   487→                </Badge>
+   488→              </div>
+   489→              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+   490→                <Building2 className="h-4 w-4" /> {posting.company}
+   491→              </div>
+   492→              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground">
+   493→                {posting.location && (
+   494→                  <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {posting.location}</span>
+   495→                )}
+   496→                {posting.remote && (
+   497→                  <span className="flex items-center gap-1 text-brand"><Wifi className="h-3 w-3" /> Remote-friendly</span>
+   498→                )}
+   499→                {posting.salary && (
+   500→                  <span className="flex items-center gap-1"><DollarSign className="h-3 w-3" /> {posting.salary}</span>
+   501→                )}
+   502→                <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {posting.views} views</span>
+   503→                <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {posting.applicationCount} applications</span>
+   504→              </div>
+   505→            </div>
+   506→            <div className="flex items-center gap-2">
+   507→              <Button
+   508→                size="sm"
+   509→                variant="outline"
+   510→                className="rounded-full"
+   511→                onClick={() => onUpdate({ status: posting.status === 'open' ? 'closed' : 'open' })}
+   512→              >
+   513→                {posting.status === 'open' ? 'Close role' : 'Reopen role'}
+   514→              </Button>
+   515→              <Button size="sm" variant="outline" className="rounded-full text-destructive" onClick={onDelete}>
+   516→                <Trash2 className="h-3.5 w-3.5" />
+   517→              </Button>
+   518→            </div>
+   519→          </div>
+   520→
+   521→          <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-5">
+   522→            <div className="md:col-span-2">
+   523→              <SectionLabel icon={FileText}>Description</SectionLabel>
+   524→              <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{posting.description}</p>
+   525→
+   526→              {posting.requirements.length > 0 && (
+   527→                <>
+   528→                  <SectionLabel icon={CheckCircle2} className="mt-5">Requirements</SectionLabel>
+   529→                  <ul className="space-y-1.5">
+   530→                    {posting.requirements.map((r, i) => (
+   531→                      <li key={i} className="text-sm text-muted-foreground flex gap-2">
+   532→                        <span className="text-brand mt-0.5">•</span> {r}
+   533→                      </li>
+   534→                    ))}
+   535→                  </ul>
+   536→                </>
+   537→              )}
+   538→            </div>
+   539→            <div>
+   540→              <SectionLabel icon={Target}>Required Skills</SectionLabel>
+   541→              <div className="flex flex-wrap gap-1.5">
+   542→                {posting.skills.length ? (
+   543→                  posting.skills.map((s) => (
+   544→                    <Badge key={s} className="bg-brand/15 text-brand border-brand/30">
+   545→                      {s}
+   546→                    </Badge>
+   547→                  ))
+   548→                ) : (
+   549→                  <span className="text-xs text-muted-foreground">None specified</span>
+   550→                )}
+   551→              </div>
+   552→            </div>
+   553→          </div>
+   554→        </CardContent>
+   555→      </Card>
+   556→
+   557→      <Card>
+   558→        <CardHeader className="pb-2">
+   559→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   560→            <Users className="h-4 w-4 text-brand" /> Applications
+   561→            <Badge variant="secondary" className="text-[10px] ml-1">{applications.length}</Badge>
+   562→          </CardTitle>
+   563→        </CardHeader>
+   564→        <CardContent>
+   565→          {loadingApps ? (
+   566→            <div className="flex justify-center py-6"><Spinner className="h-5 w-5 text-brand" /></div>
+   567→          ) : applications.length === 0 ? (
+   568→            <p className="text-xs text-muted-foreground text-center py-6">
+   569→              No applications yet. Run AI analysis from the {t('aiRecruiter')} tab to create match records.
+   570→            </p>
+   571→          ) : (
+   572→            <div className="max-h-96 overflow-y-auto space-y-2 pr-1 recruit-scroll">
+   573→              {applications.map((a) => (
+   574→                <ApplicationRow key={a.id} app={a} />
+   575→              ))}
+   576→            </div>
+   577→          )}
+   578→        </CardContent>
+   579→      </Card>
+   580→    </div>
+   581→  )
+   582→}
+   583→
+   584→function ApplicationRow({ app }: { app: Application }) {
+   585→  const [expanded, setExpanded] = useState(false)
+   586→  const hasMatch = app.matchScore != null && app.matchNotes
+   587→  return (
+   588→    <div className="rounded-lg border p-3">
+   589→      <div className="flex items-center gap-3">
+   590→        <div className="h-9 w-9 rounded-full bg-brand-soft text-brand flex items-center justify-center text-xs font-semibold shrink-0">
+   591→          {app.candidate.name.slice(0, 2).toUpperCase()}
+   592→        </div>
+   593→        <div className="flex-1 min-w-0">
+   594→          <div className="text-sm font-medium truncate">{app.candidate.name}</div>
+   595→          <div className="text-xs text-muted-foreground truncate">
+   596→            {app.candidate.headline || app.candidate.email}
+   597→          </div>
+   598→        </div>
+   599→        {app.matchScore != null && (
+   600→          <div className="text-end">
+   601→            <div className={`text-sm font-semibold ${
+   602→              app.matchScore >= 80 ? 'text-brand' : app.matchScore >= 65 ? 'text-amber-600' : 'text-muted-foreground'
+   603→            }`}>
+   604→              {app.matchScore}
+   605→            </div>
+   606→            <div className="text-[9px] text-muted-foreground uppercase tracking-wide">match</div>
+   607→          </div>
+   608→        )}
+   609→        <Badge variant="outline" className={APP_STATUS_BADGE[app.status] ?? APP_STATUS_BADGE.submitted}>
+   610→          {app.status}
+   611→        </Badge>
+   612→        {hasMatch && (
+   613→          <button
+   614→            onClick={() => setExpanded(!expanded)}
+   615→            className="text-[11px] text-muted-foreground hover:text-brand px-1"
+   616→          >
+   617→            {expanded ? 'Hide' : 'View'}
+   618→          </button>
+   619→        )}
+   620→      </div>
+   621→      {expanded && hasMatch && app.matchNotes && (
+   622→        <div className="mt-3 pt-3 border-t grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+   623→          <div>
+   624→            <div className="text-brand font-medium mb-1">Strengths</div>
+   625→            <ul className="space-y-0.5">
+   626→              {app.matchNotes.strengths.slice(0, 3).map((s, i) => (
+   627→                <li key={i} className="text-muted-foreground">• {s}</li>
+   628→              ))}
+   629→            </ul>
+   630→          </div>
+   631→          <div>
+   632→            <div className="text-amber-600 font-medium mb-1">Gaps</div>
+   633→            <ul className="space-y-0.5">
+   634→              {app.matchNotes.gaps.slice(0, 3).map((s, i) => (
+   635→                <li key={i} className="text-muted-foreground">• {s}</li>
+   636→              ))}
+   637→            </ul>
+   638→          </div>
+   639→          <div>
+   640→            <div className="text-destructive font-medium mb-1">Risks</div>
+   641→            <ul className="space-y-0.5">
+   642→              {app.matchNotes.risks.length ? (
+   643→                app.matchNotes.risks.slice(0, 3).map((s, i) => (
+   644→                  <li key={i} className="text-muted-foreground">• {s}</li>
+   645→                ))
+   646→              ) : (
+   647→                <li className="text-muted-foreground">None flagged</li>
+   648→              )}
+   649→            </ul>
+   650→          </div>
+   651→        </div>
+   652→      )}
+   653→    </div>
+   654→  )
+   655→}
+   656→
+   657→// ---------------------------------------------------------------------------
+   658→// Candidate Search tab
+   659→// ---------------------------------------------------------------------------
+   660→
+   661→function CandidateSearch({
+   662→  candidates,
+   663→  postings,
+   664→  onMatch,
+   665→}: {
+   666→  candidates: Candidate[]
+   667→  postings: Posting[]
+   668→  onMatch: (candidateId: string, jobPostingId?: string) => void
+   669→}) {
+   670→  const [query, setQuery] = useState('')
+   671→  const [filterJobId, setFilterJobId] = useState<string>('')
+   672→
+   673→  const filtered = candidates.filter((c) => {
+   674→    if (!query.trim()) return true
+   675→    const q = query.toLowerCase()
+   676→    return (
+   677→      c.name.toLowerCase().includes(q) ||
+   678→      c.headline.toLowerCase().includes(q) ||
+   679→      c.targetRole?.toLowerCase().includes(q) ||
+   680→      c.location?.toLowerCase().includes(q) ||
+   681→      c.skills.some((s) => s.toLowerCase().includes(q))
+   682→    )
+   683→  })
+   684→
+   685→  // Re-score against the selected posting if one is chosen.
+   686→  const referenceSkills = filterJobId
+   687→    ? (postings.find((p) => p.id === filterJobId)?.skills ?? [])
+   688→    : []
+   689→
+   690→  const recompute = (c: Candidate): number => {
+   691→    if (!referenceSkills.length) return c.matchScore
+   692→    if (!c.skills.length) return 40
+   693→    const jobSet = new Set(referenceSkills.map((s) => s.toLowerCase()))
+   694→    const hits = c.skills.filter((s) => jobSet.has(s.toLowerCase())).length
+   695→    return Math.min(96, Math.max(48, Math.round(55 + (hits / referenceSkills.length) * 40 + Math.min(hits * 2, 5))))
+   696→  }
+   697→
+   698→  return (
+   699→    <div className="space-y-4">
+   700→      <Card>
+   701→        <CardContent className="p-4">
+   702→          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+   703→            <div className="relative flex-1">
+   704→              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   705→              <Input
+   706→                value={query}
+   707→                onChange={(e) => setQuery(e.target.value)}
+   708→                placeholder="Search by name, role, skill or location…"
+   709→                className="ps-9"
+   710→              />
+   711→            </div>
+   712→            <div className="sm:w-64">
+   713→              <Select value={filterJobId} onValueChange={setFilterJobId}>
+   714→                <SelectTrigger><SelectValue placeholder="Score against: any role" /></SelectTrigger>
+   715→                <SelectContent>
+   716→                  <SelectItem value="">Any role</SelectItem>
+   717→                  {postings.map((p) => (
+   718→                    <SelectItem key={p.id} value={p.id}>{p.title} · {p.company}</SelectItem>
+   719→                  ))}
+   720→                </SelectContent>
+   721→              </Select>
+   722→            </div>
+   723→          </div>
+   724→        </CardContent>
+   725→      </Card>
+   726→
+   727→      {filtered.length === 0 ? (
+   728→        <Card>
+   729→          <CardContent className="p-10 text-center text-sm text-muted-foreground">
+   730→            No candidates match “{query}”.
+   731→          </CardContent>
+   732→        </Card>
+   733→      ) : (
+   734→        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+   735→          {filtered.map((c, i) => (
+   736→            <motion.div key={c.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.03 }}>
+   737→              <CandidateCard
+   738→                candidate={c}
+   739→                score={recompute(c)}
+   740→                onMatch={() => onMatch(c.id, filterJobId || undefined)}
+   741→              />
+   742→            </motion.div>
+   743→          ))}
+   744→        </div>
+   745→      )}
+   746→    </div>
+   747→  )
+   748→}
+   749→
+   750→function CandidateCard({
+   751→  candidate,
+   752→  score,
+   753→  onMatch,
+   754→}: {
+   755→  candidate: Candidate
+   756→  score: number
+   757→  onMatch: () => void
+   758→}) {
+   759→  return (
+   760→    <Card className="h-full hover:shadow-md transition-shadow">
+   761→      <CardContent className="p-5">
+   762→        <div className="flex items-start gap-3">
+   763→          <div className="h-11 w-11 rounded-full bg-brand-soft text-brand flex items-center justify-center text-sm font-semibold shrink-0 ring-2 ring-background">
+   764→            {candidate.name.slice(0, 2).toUpperCase()}
+   765→          </div>
+   766→          <div className="flex-1 min-w-0">
+   767→            <div className="flex items-center gap-1.5">
+   768→              <h3 className="text-sm font-semibold truncate">{candidate.name}</h3>
+   769→              {candidate.isSelf && <Badge className="bg-violet-500/15 text-violet-600 border-violet-500/30 text-[9px]">You</Badge>}
+   770→            </div>
+   771→            <div className="text-xs text-muted-foreground truncate">{candidate.headline}</div>
+   772→            <div className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+   773→              {candidate.location && (
+   774→                <>
+   775→                  <MapPin className="h-2.5 w-2.5" /> {candidate.location}
+   776→                </>
+   777→              )}
+   778→              {candidate.experienceYears != null && (
+   779→                <span className="ms-1">· {candidate.experienceYears}y exp</span>
+   780→              )}
+   781→            </div>
+   782→          </div>
+   783→          <MiniScoreRing score={score} />
+   784→        </div>
+   785→
+   786→        <p className="text-xs text-muted-foreground mt-3 line-clamp-2">{candidate.summary}</p>
+   787→
+   788→        {candidate.skills.length > 0 && (
+   789→          <div className="flex flex-wrap gap-1 mt-3">
+   790→            {candidate.skills.slice(0, 4).map((s) => (
+   791→              <Badge key={s} variant="outline" className="text-[10px] border-brand/30 text-brand">
+   792→                {s}
+   793→              </Badge>
+   794→            ))}
+   795→            {candidate.skills.length > 4 && (
+   796→              <span className="text-[10px] text-muted-foreground self-center">+{candidate.skills.length - 4}</span>
+   797→            )}
+   798→          </div>
+   799→        )}
+   800→
+   801→        <div className="flex items-center justify-between mt-4 pt-3 border-t">
+   802→          <div className="text-[10px] text-muted-foreground">
+   803→            {candidate.experienceHighlights.length} role{candidate.experienceHighlights.length === 1 ? '' : 's'}
+   804→          </div>
+   805→          <Button
+   806→            size="sm"
+   807→            className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90 h-7 text-[11px]"
+   808→            onClick={onMatch}
+   809→          >
+   810→            <Sparkles className="h-3 w-3" /> Match with AI
+   811→          </Button>
+   812→        </div>
+   813→      </CardContent>
+   814→    </Card>
+   815→  )
+   816→}
+   817→
+   818→function MiniScoreRing({ score }: { score: number }) {
+   819→  const r = 16
+   820→  const circ = 2 * Math.PI * r
+   821→  const offset = circ - (Math.max(0, Math.min(100, score)) / 100) * circ
+   822→  const color = score >= 80 ? 'oklch(0.7 0.15 162)' : score >= 65 ? 'oklch(0.75 0.15 80)' : 'oklch(0.65 0.05 20)'
+   823→  return (
+   824→    <div className="relative h-12 w-12 shrink-0">
+   825→      <svg className="h-12 w-12 -rotate-90" viewBox="0 0 40 40">
+   826→        <circle cx="20" cy="20" r={r} fill="none" stroke="var(--muted)" strokeWidth="3" />
+   827→        <motion.circle
+   828→          cx="20" cy="20" r={r} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round"
+   829→          strokeDasharray={circ}
+   830→          initial={{ strokeDashoffset: circ }}
+   831→          animate={{ strokeDashoffset: offset }}
+   832→          transition={{ duration: 0.8, ease: 'easeOut' }}
+   833→        />
+   834→      </svg>
+   835→      <div className="absolute inset-0 flex items-center justify-center">
+   836→        <span className="text-xs font-bold" style={{ color }}>{score}</span>
+   837→      </div>
+   838→    </div>
+   839→  )
+   840→}
+   841→
+   842→// ---------------------------------------------------------------------------
+   843→// AI Recruiter tab
+   844→// ---------------------------------------------------------------------------
+   845→
+   846→function AIRecruiter({
+   847→  postings,
+   848→  candidates,
+   849→  preselectedJobId,
+   850→  preselectedCandidateId,
+   851→}: {
+   852→  postings: Posting[]
+   853→  candidates: Candidate[]
+   854→  preselectedJobId: string
+   855→  preselectedCandidateId: string
+   856→}) {
+   857→  const { toast } = useToast()
+   858→  const [jobId, setJobId] = useState(preselectedJobId)
+   859→  const [candidateId, setCandidateId] = useState(preselectedCandidateId)
+   860→  const [running, setRunning] = useState(false)
+   861→  const [result, setResult] = useState<MatchResult | null>(null)
+   862→
+   863→  // Sync preselections when parent passes new values (e.g., from candidate card "Match" buttons).
+   864→  useEffect(() => {
+   865→    if (preselectedJobId) setJobId(preselectedJobId)
+   866→  }, [preselectedJobId])
+   867→  useEffect(() => {
+   868→    if (preselectedCandidateId) setCandidateId(preselectedCandidateId)
+   869→  }, [preselectedCandidateId])
+   870→
+   871→  const selectedJob = postings.find((p) => p.id === jobId) ?? null
+   872→  const selectedCandidate = candidates.find((c) => c.id === candidateId) ?? null
+   873→
+   874→  const runAnalysis = async () => {
+   875→    if (!jobId || !candidateId) {
+   876→      toast({ title: 'Selection required', description: 'Pick a job posting and a candidate first.', variant: 'destructive' })
+   877→      return
+   878→    }
+   879→    setRunning(true)
+   880→    setResult(null)
+   881→    try {
+   882→      const { match } = await api<{ match: MatchResult }>('/api/recruit/match', {
+   883→        method: 'POST',
+   884→        body: { jobPostingId: jobId, candidateId },
+   885→      })
+   886→      setResult(match)
+   887→      toast({ title: 'AI analysis complete', description: `Match score: ${match.matchScore}/100` })
+   888→    } catch (e) {
+   889→      toast({ title: 'Analysis failed', description: (e as Error).message, variant: 'destructive' })
+   890→    } finally {
+   891→      setRunning(false)
+   892→    }
+   893→  }
+   894→
+   895→  if (postings.length === 0) {
+   896→    return (
+   897→      <Card>
+   898→        <CardContent className="p-10 text-center text-sm text-muted-foreground">
+   899→          Post a job first — the AI Recruiter needs a job posting to analyze candidates against.
+   900→        </CardContent>
+   901→      </Card>
+   902→    )
+   903→  }
+   904→
+   905→  return (
+   906→    <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-4">
+   907→      {/* Selector column */}
+   908→      <Card className="h-fit">
+   909→        <CardHeader className="pb-2">
+   910→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   911→            <Brain className="h-4 w-4 text-brand" /> Configure Analysis
+   912→          </CardTitle>
+   913→        </CardHeader>
+   914→        <CardContent className="space-y-4">
+   915→          <div>
+   916→            <Label className="text-xs text-muted-foreground">Job posting</Label>
+   917→            <Select value={jobId} onValueChange={setJobId}>
+   918→              <SelectTrigger className="mt-1"><SelectValue placeholder="Select a role" /></SelectTrigger>
+   919→              <SelectContent>
+   920→                {postings.map((p) => (
+   921→                  <SelectItem key={p.id} value={p.id}>{p.title} · {p.company}</SelectItem>
+   922→                ))}
+   923→              </SelectContent>
+   924→            </Select>
+   925→          </div>
+   926→
+   927→          <div>
+   928→            <Label className="text-xs text-muted-foreground">Candidate</Label>
+   929→            <Select value={candidateId} onValueChange={setCandidateId}>
+   930→              <SelectTrigger className="mt-1"><SelectValue placeholder="Select a candidate" /></SelectTrigger>
+   931→              <SelectContent>
+   932→                {candidates.map((c) => (
+   933→                  <SelectItem key={c.id} value={c.id}>
+   934→                    {c.name}{c.isSelf ? ' (You)' : ''} — {c.headline}
+   935→                  </SelectItem>
+   936→                ))}
+   937→              </SelectContent>
+   938→            </Select>
+   939→          </div>
+   940→
+   941→          {selectedJob && selectedCandidate && (
+   942→            <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+   943→              <div className="text-[11px] text-muted-foreground">Match preview</div>
+   944→              <div className="text-sm font-medium">{selectedJob.title}</div>
+   945→              <div className="text-xs text-muted-foreground">at {selectedJob.company}</div>
+   946→              <div className="text-xs text-muted-foreground mt-1.5">vs</div>
+   947→              <div className="text-sm font-medium">{selectedCandidate.name}</div>
+   948→              <div className="text-xs text-muted-foreground">{selectedCandidate.headline}</div>
+   949→              {selectedJob.skills.length > 0 && (
+   950→                <div className="flex flex-wrap gap-1 pt-1.5">
+   951→                  {selectedJob.skills.slice(0, 4).map((s) => {
+   952→                    const has = selectedCandidate.skills.some((cs) => cs.toLowerCase() === s.toLowerCase())
+   953→                    return (
+   954→                      <Badge
+   955→                        key={s}
+   956→                        variant="outline"
+   957→                        className={`text-[9px] ${has ? 'border-brand/40 text-brand bg-brand/10' : 'text-muted-foreground'}`}
+   958→                      >
+   959→                        {has && <CheckCircle2 className="h-2.5 w-2.5 me-0.5" />}{s}
+   960→                      </Badge>
+   961→                    )
+   962→                  })}
+   963→                </div>
+   964→              )}
+   965→            </div>
+   966→          )}
+   967→
+   968→          <Button
+   969→            onClick={runAnalysis}
+   970→            disabled={running || !jobId || !candidateId}
+   971→            className="w-full bg-brand text-brand-foreground hover:bg-brand/90 rounded-full"
+   972→          >
+   973→            {running ? (
+   974→              <><Spinner /> Running AI analysis…</>
+   975→            ) : (
+   976→              <><Zap className="h-4 w-4" /> Run AI Analysis</>
+   977→            )}
+   978→          </Button>
+   979→          <p className="text-[10px] text-muted-foreground text-center">
+   980→            The AI loads the candidate's resume + profile, scores fit, flags risks, and recommends interview focus areas.
+   981→          </p>
+   982→        </CardContent>
+   983→      </Card>
+   984→
+   985→      {/* Result column */}
+   986→      <div>
+   987→        {running ? (
+   988→          <Card>
+   989→            <CardContent className="p-10 flex flex-col items-center gap-3">
+   990→              <div className="h-12 w-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
+   991→              <p className="text-sm text-muted-foreground">Reading resume like a senior recruiter…</p>
+   992→            </CardContent>
+   993→          </Card>
+   994→        ) : result ? (
+   995→          <MatchResultPanel result={result} />
+   996→        ) : (
+   997→          <Card>
+   998→            <CardContent className="p-10 text-center">
+   999→              <Brain className="h-10 w-10 mx-auto text-muted-foreground/40" />
+  1000→              <p className="mt-3 text-sm text-muted-foreground">
+  1001→                Select a job and a candidate, then run AI analysis to see a deep match report here.
+  1002→              </p>
+  1003→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-6 max-w-md mx-auto">
+  1004→                {[
+  1005→                  { icon: Target, label: 'Match Score' },
+  1006→                  { icon: CheckCircle2, label: 'Strengths & Gaps' },
+  1007→                  { icon: ShieldAlert, label: 'Risks & Focus' },
+  1008→                ].map(({ icon: I, label }) => (
+  1009→                  <div key={label} className="rounded-lg border p-3 text-center">
+  1010→                    <I className="h-4 w-4 mx-auto text-brand" />
+  1011→                    <div className="text-[11px] text-muted-foreground mt-1">{label}</div>
+  1012→                  </div>
+  1013→                ))}
+  1014→              </div>
+  1015→            </CardContent>
+  1016→          </Card>
+  1017→        )}
+  1018→      </div>
+  1019→    </div>
+  1020→  )
+  1021→}
+  1022→
+  1023→function MatchResultPanel({ result }: { result: MatchResult }) {
+  1024→  const color = result.matchScore >= 80 ? 'oklch(0.7 0.15 162)' : result.matchScore >= 65 ? 'oklch(0.75 0.15 80)' : 'oklch(0.65 0.05 20)'
+  1025→  const verdictLabel = result.matchScore >= 80 ? 'Strong match' : result.matchScore >= 65 ? 'Worth exploring' : 'Stretch fit'
+  1026→  return (
+  1027→    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+  1028→      {/* Hero */}
+  1029→      <Card className="overflow-hidden">
+  1030→        <CardContent className="p-0">
+  1031→          <div className="grid grid-cols-1 md:grid-cols-[220px_1fr]">
+  1032→            <div
+  1033→              className="flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-e"
+  1034→              style={{ background: `linear-gradient(135deg, color-mix(in oklch, ${color} 18%, var(--card)), var(--card))` }}
+  1035→            >
+  1036→              <ScoreRing score={result.matchScore} color={color} />
+  1037→              <Badge variant="outline" className="mt-3 border-current/30" style={{ color }}>
+  1038→                {verdictLabel}
+  1039→              </Badge>
+  1040→            </div>
+  1041→            <div className="p-5">
+  1042→              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+  1043→                <Sparkles className="h-3.5 w-3.5 text-brand" /> AI Verdict
+  1044→              </div>
+  1045→              <p className="text-sm leading-relaxed">{result.verdict}</p>
+  1046→              {result.recommendation && (
+  1047→                <div className="mt-3 rounded-lg bg-brand-soft/40 border border-brand/20 p-3 text-sm">
+  1048→                  <div className="flex items-center gap-1.5 text-xs font-medium text-brand mb-1">
+  1049→                    <Lightbulb className="h-3.5 w-3.5" /> Recommendation
+  1050→                  </div>
+  1051→                  <p className="text-foreground/90">{result.recommendation}</p>
+  1052→                </div>
+  1053→              )}
+  1054→            </div>
+  1055→          </div>
+  1056→        </CardContent>
+  1057→      </Card>
+  1058→
+  1059→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  1060→        {/* Strengths */}
+  1061→        <Card>
+  1062→          <CardHeader className="pb-2">
+  1063→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+  1064→              <CheckCircle2 className="h-4 w-4 text-brand" /> Strengths
+  1065→            </CardTitle>
+  1066→          </CardHeader>
+  1067→          <CardContent>
+  1068→            {result.strengths.length ? (
+  1069→              <ul className="space-y-1.5">
+  1070→                {result.strengths.map((s, i) => (
+  1071→                  <li key={i} className="text-xs text-muted-foreground flex gap-2">
+  1072→                    <span className="text-brand mt-0.5">•</span> {s}
+  1073→                  </li>
+  1074→                ))}
+  1075→              </ul>
+  1076→            ) : (
+  1077→              <p className="text-xs text-muted-foreground">None identified.</p>
+  1078→            )}
+  1079→          </CardContent>
+  1080→        </Card>
+  1081→
+  1082→        {/* Gaps */}
+  1083→        <Card>
+  1084→          <CardHeader className="pb-2">
+  1085→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+  1086→              <AlertTriangle className="h-4 w-4 text-amber-500" /> Gaps
+  1087→            </CardTitle>
+  1088→          </CardHeader>
+  1089→          <CardContent>
+  1090→            {result.gaps.length ? (
+  1091→              <ul className="space-y-1.5">
+  1092→                {result.gaps.map((s, i) => (
+  1093→                  <li key={i} className="text-xs text-muted-foreground flex gap-2">
+  1094→                    <span className="text-amber-500 mt-0.5">•</span> {s}
+  1095→                  </li>
+  1096→                ))}
+  1097→              </ul>
+  1098→            ) : (
+  1099→              <p className="text-xs text-muted-foreground">No significant gaps.</p>
+  1100→            )}
+  1101→          </CardContent>
+  1102→        </Card>
+  1103→
+  1104→        {/* Risks */}
+  1105→        <Card>
+  1106→          <CardHeader className="pb-2">
+  1107→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+  1108→              <AlertCircle className="h-4 w-4 text-destructive" /> Risks
+  1109→            </CardTitle>
+  1110→          </CardHeader>
+  1111→          <CardContent>
+  1112→            {result.risks.length ? (
+  1113→              <ul className="space-y-1.5">
+  1114→                {result.risks.map((s, i) => (
+  1115→                  <li key={i} className="text-xs text-muted-foreground flex gap-2">
+  1116→                    <span className="text-destructive mt-0.5">!</span> {s}
+  1117→                  </li>
+  1118→                ))}
+  1119→              </ul>
+  1120→            ) : (
+  1121→              <p className="text-xs text-muted-foreground">No risks flagged.</p>
+  1122→            )}
+  1123→          </CardContent>
+  1124→        </Card>
+  1125→
+  1126→        {/* Interview focus */}
+  1127→        <Card>
+  1128→          <CardHeader className="pb-2">
+  1129→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+  1130→              <Target className="h-4 w-4 text-brand" /> Interview Focus Areas
+  1131→            </CardTitle>
+  1132→          </CardHeader>
+  1133→          <CardContent>
+  1134→            {result.interviewFocus.length ? (
+  1135→              <div className="flex flex-wrap gap-1.5">
+  1136→                {result.interviewFocus.map((s, i) => (
+  1137→                  <Badge key={i} className="bg-brand/15 text-brand border-brand/30">
+  1138→                    {s}
+  1139→                  </Badge>
+  1140→                ))}
+  1141→              </div>
+  1142→            ) : (
+  1143→              <p className="text-xs text-muted-foreground">No focus areas suggested.</p>
+  1144→            )}
+  1145→          </CardContent>
+  1146→        </Card>
+  1147→      </div>
+  1148→    </motion.div>
+  1149→  )
+  1150→}
+  1151→
+  1152→// ---------------------------------------------------------------------------
+  1153→// Post a Job dialog
+  1154→// ---------------------------------------------------------------------------
+  1155→
+  1156→type PostingForm = {
+  1157→  title: string
+  1158→  company: string
+  1159→  location: string
+  1160→  remote: boolean
+  1161→  salary: string
+  1162→  type: string
+  1163→  description: string
+  1164→  requirements: string[]
+  1165→  skills: string[]
+  1166→}
+  1167→
+  1168→function PostJobDialog({
+  1169→  open,
+  1170→  onOpenChange,
+  1171→  onCreate,
+  1172→}: {
+  1173→  open: boolean
+  1174→  onOpenChange: (v: boolean) => void
+  1175→  onCreate: (form: PostingForm) => void
+  1176→}) {
+  1177→  const { t } = useApp()
+  1178→  const [form, setForm] = useState<PostingForm>({
+  1179→    title: '',
+  1180→    company: '',
+  1181→    location: '',
+  1182→    remote: true,
+  1183→    salary: '',
+  1184→    type: 'full-time',
+  1185→    description: '',
+  1186→    requirements: [],
+  1187→    skills: [],
+  1188→  })
+  1189→
+  1190→  const reset = () => setForm({
+  1191→    title: '', company: '', location: '', remote: true, salary: '',
+  1192→    type: 'full-time', description: '', requirements: [], skills: [],
+  1193→  })
+  1194→
+  1195→  const submit = () => {
+  1196→    if (!form.title.trim() || !form.company.trim() || !form.description.trim()) {
+  1197→      return
+  1198→    }
+  1199→    onCreate(form)
+  1200→    reset()
+  1201→  }
+  1202→
+  1203→  return (
+  1204→    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) reset() }}>
+  1205→      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto recruit-scroll">
+  1206→        <DialogHeader>
+  1207→          <DialogTitle className="flex items-center gap-2">
+  1208→            <Briefcase className="h-5 w-5 text-brand" /> {t('postJob')}
+  1209→          </DialogTitle>
+  1210→          <DialogDescription>
+  1211→            Publish a new role. The AI Recruiter will match candidates against this posting.
+  1212→          </DialogDescription>
+  1213→        </DialogHeader>
+  1214→
+  1215→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  1216→          <div>
+  1217→            <Label className="text-xs text-muted-foreground">Job title *</Label>
+  1218→            <Input
+  1219→              value={form.title}
+  1220→              onChange={(e) => setForm({ ...form, title: e.target.value })}
+  1221→              placeholder="Senior Frontend Engineer"
+  1222→              className="mt-1"
+  1223→            />
+  1224→          </div>
+  1225→          <div>
+  1226→            <Label className="text-xs text-muted-foreground">Company *</Label>
+  1227→            <Input
+  1228→              value={form.company}
+  1229→              onChange={(e) => setForm({ ...form, company: e.target.value })}
+  1230→              placeholder="Vercel"
+  1231→              className="mt-1"
+  1232→            />
+  1233→          </div>
+  1234→          <div>
+  1235→            <Label className="text-xs text-muted-foreground">Location</Label>
+  1236→            <Input
+  1237→              value={form.location}
+  1238→              onChange={(e) => setForm({ ...form, location: e.target.value })}
+  1239→              placeholder="Remote (Global)"
+  1240→              className="mt-1"
+  1241→            />
+  1242→          </div>
+  1243→          <div>
+  1244→            <Label className="text-xs text-muted-foreground">Salary range</Label>
+  1245→            <Input
+  1246→              value={form.salary}
+  1247→              onChange={(e) => setForm({ ...form, salary: e.target.value })}
+  1248→              placeholder="$180k–$220k"
+  1249→              className="mt-1"
+  1250→            />
+  1251→          </div>
+  1252→          <div className="flex items-center justify-between rounded-md border p-2.5">
+  1253→            <div>
+  1254→              <Label className="text-xs">Remote-friendly</Label>
+  1255→              <p className="text-[10px] text-muted-foreground">Tag the role as remote-eligible</p>
+  1256→            </div>
+  1257→            <Switch checked={form.remote} onCheckedChange={(v) => setForm({ ...form, remote: v })} />
+  1258→          </div>
+  1259→          <div>
+  1260→            <Label className="text-xs text-muted-foreground">Employment type</Label>
+  1261→            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+  1262→              <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+  1263→              <SelectContent>
+  1264→                {JOB_TYPES.map((tp) => (
+  1265→                  <SelectItem key={tp} value={tp}>{TYPE_LABELS[tp]}</SelectItem>
+  1266→                ))}
+  1267→              </SelectContent>
+  1268→            </Select>
+  1269→          </div>
+  1270→        </div>
+  1271→
+  1272→        <div>
+  1273→          <Label className="text-xs text-muted-foreground">Description *</Label>
+  1274→          <Textarea
+  1275→            value={form.description}
+  1276→            onChange={(e) => setForm({ ...form, description: e.target.value })}
+  1277→            rows={4}
+  1278→            placeholder="Describe the role, team, mission and what the candidate will own…"
+  1279→            className="mt-1"
+  1280→          />
+  1281→        </div>
+  1282→
+  1283→        <div>
+  1284→          <Label className="text-xs text-muted-foreground">Requirements</Label>
+  1285→          <p className="text-[10px] text-muted-foreground mb-1.5">Press Enter or comma to add.</p>
+  1286→          <ChipInput
+  1287→            value={form.requirements}
+  1288→            onChange={(v) => setForm({ ...form, requirements: v })}
+  1289→            placeholder="5+ years React experience"
+  1290→          />
+  1291→        </div>
+  1292→
+  1293→        <div>
+  1294→          <Label className="text-xs text-muted-foreground">Required skills</Label>
+  1295→          <p className="text-[10px] text-muted-foreground mb-1.5">Press Enter or comma to add.</p>
+  1296→          <ChipInput
+  1297→            value={form.skills}
+  1298→            onChange={(v) => setForm({ ...form, skills: v })}
+  1299→            placeholder="React, TypeScript, Next.js"
+  1300→          />
+  1301→        </div>
+  1302→
+  1303→        <DialogFooter>
+  1304→          <Button variant="outline" className="rounded-full" onClick={() => onOpenChange(false)}>
+  1305→            {t('cancel')}
+  1306→          </Button>
+  1307→          <Button
+  1308→            className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+  1309→            onClick={submit}
+  1310→            disabled={!form.title.trim() || !form.company.trim() || !form.description.trim()}
+  1311→          >
+  1312→            <Plus className="h-4 w-4" /> Publish role
+  1313→          </Button>
+  1314→        </DialogFooter>
+  1315→      </DialogContent>
+  1316→    </Dialog>
+  1317→  )
+  1318→}
+  1319→
+  1320→// ---------------------------------------------------------------------------
+  1321→// Shared bits
+  1322→// ---------------------------------------------------------------------------
+  1323→
+  1324→function ScoreRing({ score, color }: { score: number; color: string }) {
+  1325→  const r = 34
+  1326→  const circ = 2 * Math.PI * r
+  1327→  const offset = circ - (Math.max(0, Math.min(100, score)) / 100) * circ
+  1328→  return (
+  1329→    <div className="relative h-24 w-24">
+  1330→      <svg className="h-24 w-24 -rotate-90" viewBox="0 0 80 80">
+  1331→        <circle cx="40" cy="40" r={r} fill="none" stroke="var(--muted)" strokeWidth="6" />
+  1332→        <motion.circle
+  1333→          cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+  1334→          strokeDasharray={circ}
+  1335→          initial={{ strokeDashoffset: circ }}
+  1336→          animate={{ strokeDashoffset: offset }}
+  1337→          transition={{ duration: 1, ease: 'easeOut' }}
+  1338→        />
+  1339→      </svg>
+  1340→      <div className="absolute inset-0 flex flex-col items-center justify-center">
+  1341→        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
+  1342→        <span className="text-[9px] text-muted-foreground uppercase tracking-wide">/ 100</span>
+  1343→      </div>
+  1344→    </div>
+  1345→  )
+  1346→}
+  1347→
+  1348→function SectionLabel({ icon: Icon, children, className }: { icon: React.ElementType; children: React.ReactNode; className?: string }) {
+  1349→  return (
+  1350→    <div className={`flex items-center gap-1.5 text-xs font-semibold text-foreground mb-2 ${className ?? ''}`}>
+  1351→      <Icon className="h-3.5 w-3.5 text-brand" /> {children}
+  1352→    </div>
+  1353→  )
+  1354→}
+  1355→
+  1356→function ChipInput({
+  1357→  value,
+  1358→  onChange,
+  1359→  placeholder,
+  1360→}: {
+  1361→  value: string[]
+  1362→  onChange: (v: string[]) => void
+  1363→  placeholder?: string
+  1364→}) {
+  1365→  const [input, setInput] = useState('')
+  1366→  const add = () => {
+  1367→    const v = input.trim().replace(/,+$/, '').trim()
+  1368→    if (v && !value.includes(v)) onChange([...value, v])
+  1369→    setInput('')
+  1370→  }
+  1371→  return (
+  1372→    <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-background p-2 min-h-9 focus-within:ring-2 focus-within:ring-ring/30">
+  1373→      {value.map((chip) => (
+  1374→        <Badge key={chip} className="bg-brand/15 text-brand border-brand/30 gap-1 text-[11px]">
+  1375→          {chip}
+  1376→          <button
+  1377→            type="button"
+  1378→            onClick={() => onChange(value.filter((c) => c !== chip))}
+  1379→            className="hover:bg-brand/20 rounded-full p-0.5"
+  1380→            aria-label={`Remove ${chip}`}
+  1381→          >
+  1382→            <X className="h-2.5 w-2.5" />
+  1383→          </button>
+  1384→        </Badge>
+  1385→      ))}
+  1386→      <input
+  1387→        value={input}
+  1388→        onChange={(e) => setInput(e.target.value)}
+  1389→        onKeyDown={(e) => {
+  1390→          if (e.key === 'Enter' || e.key === ',') {
+  1391→            e.preventDefault()
+  1392→            add()
+  1393→          } else if (e.key === 'Backspace' && !input && value.length) {
+  1394→            onChange(value.slice(0, -1))
+  1395→          }
+  1396→        }}
+  1397→        onBlur={add}
+  1398→        placeholder={value.length === 0 ? placeholder : ''}
+  1399→        className="flex-1 min-w-[140px] bg-transparent outline-none text-sm py-0.5"
+  1400→      />
+  1401→    </div>
+  1402→  )
+  1403→}
+  1404→

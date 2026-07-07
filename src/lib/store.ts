@@ -25,6 +25,11 @@ export type ModuleId =
   | 'market'
   | 'documents'
   | 'enterprise'
+  | 'recruit'
+  | 'marketplace'
+  | 'analytics'
+  | 'security'
+  | 'briefing'
 
 type AppState = {
   active: ModuleId

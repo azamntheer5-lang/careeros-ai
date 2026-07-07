@@ -327,3 +327,63 @@ export async function runText(promptKey: string, userId: string, userName: strin
   return run<string>(promptKey, userId, userName, caller, { json: false })
 }
 
+export class InsufficientCreditsError extends Error {
+  constructor(public balance: number, public cost: number) {
+    super(`Insufficient credits: have ${balance}, need ${cost}`)
+    this.name = 'InsufficientCreditsError'
+  }
+}
+
+/**
+ * Credit-gated run: spends credits before executing, throws InsufficientCreditsError if the user can't afford it.
+ * Uses smart model selection based on the user's plan.
+ */
+export async function runWithCredits<T = string>(
+  promptKey: string,
+  userId: string,
+  userName: string,
+  caller: ChatMessage[],
+  opts: { json?: boolean; feature?: string } = {}
+): Promise<RunResult<T> & { balance: number; cost: number }> {
+  const feature = opts.feature || promptKey
+  // Lazy import to avoid circular dependency at module load
+  const { spendCredits } = await import('@/lib/credits')
+  const { selectModel } = await import('@/lib/billing')
+  const { db } = await import('@/lib/db')
+
+  const user = await db.user.findUnique({ where: { id: userId }, select: { credits: true, plan: true } })
+  if (!user) throw new Error('User not found')
+
+  const { ok, balance, cost } = await spendCredits(userId, feature)
+  if (!ok) throw new InsufficientCreditsError(balance, cost)
+
+  const def = PROMPTS[promptKey] ?? { key: promptKey, version: 1, model: 'balanced' as ModelTier, system: 'You are a helpful assistant.' }
+  // Smart model selection: override the registry model based on plan + feature for cost optimization
+  const smartModel = selectModel(user.plan as any, feature)
+  const t0 = Date.now()
+  let memory: CareerProfileMemory | null = null
+  try { memory = await loadProfileMemory(userId) } catch {}
+
+  const sys: string[] = [def.system]
+  if (memory) {
+    const block = memoryBlock(memory, userName)
+    if (block) sys.push(block)
+  }
+  const messages: ChatMessage[] = [{ role: 'system', content: sys.join('\n\n') }, ...caller]
+
+  let tokens = 0
+  let data: T
+  if (opts.json) {
+    const res = await completeJson<T>(messages)
+    data = res.data
+    tokens = res.tokens
+  } else {
+    const text = await complete(messages)
+    data = text as unknown as T
+    tokens = Math.ceil(text.length / 4)
+  }
+  const latencyMs = Date.now() - t0
+  await trackUsage(userId, def.key, promptKey, tokens, true, latencyMs)
+  return { data, tokens, model: smartModel, latencyMs, balance, cost }
+}
+

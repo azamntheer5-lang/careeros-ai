@@ -10,6 +10,7 @@ import { Footer } from '@/components/careeros/footer'
 import { LoadingScreen } from '@/components/careeros/loading'
 import { CommandPalette } from '@/components/careeros/command-palette'
 import { Onboarding } from '@/components/careeros/onboarding'
+import { AssessmentOnboarding } from '@/components/careeros/assessment-onboarding'
 import { FloatingAssistant } from '@/components/careeros/floating-assistant'
 import { DashboardModule } from '@/components/modules/dashboard'
 import { ProfileModule } from '@/components/modules/profile'
@@ -34,6 +35,11 @@ import { AiCenterModule } from '@/components/modules/aicenter'
 import { EnterpriseModule } from '@/components/modules/enterprise'
 import { PlansModule } from '@/components/modules/plans'
 import { AdminModule } from '@/components/modules/admin'
+import { RecruitModule } from '@/components/modules/recruit'
+import { MarketplaceModule } from '@/components/modules/marketplace'
+import { AnalyticsModule } from '@/components/modules/analytics'
+import { SecurityModule } from '@/components/modules/security'
+import { BriefingModule } from '@/components/modules/briefing'
 
 type User = { id: string; name: string; plan: string; headline: string }
 
@@ -96,6 +102,11 @@ export default function Page() {
                   {active === 'aicenter' && <AiCenterModule />}
                   {active === 'enterprise' && <EnterpriseModule />}
                   {active === 'plans' && <PlansModule />}
+                  {active === 'recruit' && <RecruitModule />}
+                  {active === 'marketplace' && <MarketplaceModule />}
+                  {active === 'analytics' && <AnalyticsModule />}
+                  {active === 'security' && <SecurityModule />}
+                  {active === 'briefing' && <BriefingModule />}
                   {active === 'admin' && <AdminModule />}
                 </motion.div>
               </AnimatePresence>
@@ -106,6 +117,7 @@ export default function Page() {
       <Footer />
       <CommandPalette />
       <Onboarding />
+      <AssessmentOnboarding />
       <FloatingAssistant />
     </div>
   )

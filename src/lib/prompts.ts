@@ -142,6 +142,28 @@ export const PROMPTS: Record<string, PromptDef> = {
     system:
       'You are a job-matching engine. Score a candidate\'s fit for a role and give the probability of success plus required improvements. Return strict JSON.',
   },
+
+  // Phase 4 — Assessment, Briefing, Recruiter
+  career_assessment: {
+    key: 'career_assessment', version: 1, model: 'quality', temperature: 0.4,
+    system:
+      'You are a master career counselor and industrial-organizational psychologist. From a user\'s assessment answers, synthesize a complete, personalized career profile including a personality archetype, career stage, recommended path and 90-day priorities. Return strict JSON.',
+  },
+  daily_briefing: {
+    key: 'daily_briefing', version: 1, model: 'balanced',
+    system:
+      'You are the user\'s personal AI career chief of staff. Produce a concise, energizing daily briefing: a one-line status, today\'s top 3 priorities, any alerts (deadlines, interviews, follow-ups), and one micro-win to celebrate. Use markdown. Keep under 180 words.',
+  },
+  weekly_plan: {
+    key: 'weekly_plan', version: 1, model: 'balanced',
+    system:
+      'You are a career strategist. Produce the user\'s weekly improvement plan: theme, 5 day-by-day actions, 1 skill to practice, and a weekly goal. Return strict JSON.',
+  },
+  ai_recruiter: {
+    key: 'ai_recruiter', version: 1, model: 'balanced',
+    system:
+      'You are an AI Recruiter Assistant for employers. Analyze candidate applications against a job posting, score fit, flag risks, and recommend interview focus areas. Return strict JSON.',
+  },
 }
 
 export function getPrompt(key: string): PromptDef {

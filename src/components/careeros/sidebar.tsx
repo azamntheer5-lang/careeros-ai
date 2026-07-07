@@ -3,7 +3,7 @@
 import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
-  Sparkles, Command, Bot, Network, TrendingUp, FileScan, Building2, Zap,
+  Sparkles, Command, Bot, Network, TrendingUp, FileScan, Building2, Zap, Sun, ShoppingBag, BarChart3, Shield, Coins,
 } from 'lucide-react'
 import { useAppStore, ModuleId } from '@/lib/store'
 import { useApp } from '@/components/app-provider'
@@ -53,15 +53,20 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { id: 'jobs', icon: Briefcase, label: 'jobs' },
       { id: 'market', icon: TrendingUp, label: 'market' },
+      { id: 'recruit', icon: Briefcase, label: 'recruit' },
       { id: 'network', icon: Network, label: 'network' },
       { id: 'mentors', icon: GraduationCap, label: 'mentors' },
+      { id: 'marketplace', icon: ShoppingBag, label: 'marketplace' },
     ],
   },
   {
     section: 'system',
     items: [
+      { id: 'briefing', icon: Sun, label: 'briefing' },
       { id: 'aicenter', icon: Cpu, label: 'aicenter' },
+      { id: 'analytics', icon: BarChart3, label: 'analytics' },
       { id: 'enterprise', icon: Building2, label: 'enterprise' },
+      { id: 'security', icon: Shield, label: 'security' },
       { id: 'plans', icon: CreditCard, label: 'plans' },
       { id: 'admin', icon: ShieldCheck, label: 'admin' },
     ],
@@ -136,17 +141,16 @@ export function Sidebar() {
       <div className="border-t border-sidebar-border p-3">
         <div className="rounded-xl bg-gradient-to-br from-brand/15 to-transparent p-3.5 border border-brand/20">
           <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="h-3.5 w-3.5 text-brand" />
+            <Coins className="h-3.5 w-3.5 text-brand" />
             <span className="text-xs font-semibold">{profile?.targetRole ? 'AI is personalized' : 'Set up your profile'}</span>
           </div>
           <p className="text-[11px] text-muted-foreground leading-relaxed truncate">
             {profile?.targetRole ? `Targeting: ${profile.targetRole}` : 'Complete your profile to power every AI feature.'}
           </p>
-          {!profile?.targetRole && (
-            <Button size="sm" className="mt-2 w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90 text-[11px] h-7" onClick={() => set('profile')}>
-              {t('profile')}
-            </Button>
-          )}
+          <button onClick={() => set('plans')} className="mt-2 flex items-center justify-between w-full rounded-lg bg-brand-soft/60 px-2.5 py-1.5 text-xs hover:bg-brand-soft transition">
+            <span className="flex items-center gap-1.5 text-brand font-medium"><Coins className="h-3 w-3" /> Credits</span>
+            <span className="font-bold text-brand">∞</span>
+          </button>
         </div>
       </div>
     </aside>

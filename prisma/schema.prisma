@@ -11,16 +11,19 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  headline  String?
-  role      String   @default("user") // user | admin
-  plan      String   @default("free") // free | pro | premium | enterprise
-  tenantId  String?
-  onboarded Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  headline      String?
+  role          String   @default("user") // user | admin | owner | recruiter | creator
+  plan          String   @default("free") // free | starter | professional | career_pro | enterprise
+  tenantId      String?
+  onboarded     Boolean  @default(false)
+  credits       Int      @default(50) // AI credit balance
+  trialEndsAt   DateTime?
+  mfaEnabled    Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   resumes         Resume[]
   coverLetters    CoverLetter[]
@@ -46,6 +49,15 @@ model User {
   mentorProfile   Mentor?
   bookings        Booking[]   @relation("BookingUser")
   tenant          Tenant?     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  subscription    Subscription?
+  creditTxns      CreditTransaction[]
+  assessments     Assessment[]
+  briefings       CareerBriefing[]
+  jobPostings     JobPosting[]  @relation("JobPostingEmployer")
+  applications    CandidateApplication[]
+  templatePubs    Template[]
+  creatorContent  CreatorContent[]
+  achievements    Achievement[]
 }
 
 model CareerProfile {
@@ -543,6 +555,175 @@ model Document {
   parsed     String?  // JSON: extracted structured data
   status     String   @default("pending") // pending | parsed | error
   createdAt  DateTime @default(now())
+  @@index([userId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
+// PHASE 4 — SaaS Foundation: Billing, Credits, Assessment, Recruitment,
+// Marketplace, Analytics, Security
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  plan            String   @default("free") // free | starter | professional | career_pro | enterprise
+  status          String   @default("active") // active | trialing | past_due | canceled | expired
+  interval        String?  // monthly | annual
+  stripeCustomerId String?
+  stripeSubId     String?
+  currentPeriodStart DateTime?
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd  Boolean @default(false)
+  startedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices        Invoice[]
+  @@index([userId])
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  subscriptionId  String
+  userId          String
+  amount          Int      // cents
+  currency        String   @default("USD")
+  status          String   @default("paid") // paid | open | void | uncollectible
+  description     String?
+  stripeInvoiceId String?
+  periodStart     DateTime
+  periodEnd       DateTime
+  createdAt       DateTime @default(now())
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([subscriptionId])
+}
+
+model CreditTransaction {
+  id         String   @id @default(cuid())
+  userId     String
+  amount     Int      // positive = purchase/grant, negative = usage
+  reason     String   // purchase | grant | usage | refund | bonus
+  feature    String?  // which feature consumed credits
+  balance    Int      // running balance after txn
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Assessment {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String   @default("career") // career | personality | skill
+  answers    String   // JSON: { experience, skills, goals, industry, salary, personality, ambition }
+  result     String?  // JSON: AI-generated career profile
+  score      Int?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model CareerBriefing {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String   // daily | weekly
+  content    String   // JSON: { summary, priorities, alerts, recommendations, achievements }
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, type])
+  @@index([createdAt])
+}
+
+model JobPosting {
+  id           String   @id @default(cuid())
+  employerId   String
+  tenantId     String?
+  title        String
+  company      String
+  location     String?
+  remote       Boolean  @default(false)
+  salary       String?
+  type         String   @default("full-time") // full-time | part-time | contract | internship
+  description  String
+  requirements String?  // JSON string[]
+  skills       String?  // JSON string[]
+  status       String   @default("open") // open | closed | draft
+  views        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  employer     User     @relation("JobPostingEmployer", fields: [employerId], references: [id], onDelete: Cascade)
+  applications CandidateApplication[]
+  @@index([employerId])
+  @@index([status])
+}
+
+model CandidateApplication {
+  id          String   @id @default(cuid())
+  jobPostingId String
+  candidateId String
+  status      String   @default("submitted") // submitted | reviewed | shortlisted | interview | rejected | hired
+  matchScore  Int?
+  matchNotes  String?
+  coverLetter String?
+  createdAt   DateTime @default(now())
+  jobPosting  JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  candidate   User     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  @@unique([jobPostingId, candidateId])
+  @@index([candidateId])
+  @@index([status])
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  creatorId   String
+  type        String   // resume | portfolio | cover_letter
+  name        String
+  description String?
+  category    String?  // industry / style category
+  preview     String?  // JSON preview config
+  config      String   // JSON template config
+  price       Int      @default(0) // cents, 0 = free
+  downloads   Int      @default(0)
+  rating      Float    @default(0)
+  published   Boolean  @default(false)
+  featured    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  creator     User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  @@index([type, published])
+  @@index([creatorId])
+}
+
+model CreatorContent {
+  id          String   @id @default(cuid())
+  creatorId   String
+  type        String   // course | guide | template | coaching_pack
+  title       String
+  description String?
+  content     String   // JSON or markdown
+  price       Int      @default(0)
+  tags        String?  // JSON string[]
+  published   Boolean  @default(false)
+  enrollments Int      @default(0)
+  rating      Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  creator     User     @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  @@index([creatorId])
+  @@index([type, published])
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String   // resume_created | ats_score | interview_completed | job_applied | skill_learned | streak | milestone
+  title       String
+  description String?
+  value       Int?
+  unlockedAt  DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   @@index([userId])
   @@index([type])
 }

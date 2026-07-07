@@ -10,6 +10,7 @@ import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
   Search, CornerDownLeft, ArrowUp, ArrowDown, Bot, Network, TrendingUp, FileScan, Building2, Zap,
+  Sun, ShoppingBag, BarChart3, Shield,
 } from 'lucide-react'
 
 type CmdItem = { id: ModuleId; label: string; hint: string; icon: any; keywords: string[] }
@@ -53,9 +54,14 @@ export function CommandPalette() {
     { id: 'market', label: t('market'), hint: 'Job market intelligence & matching', icon: TrendingUp, keywords: ['salary', 'trends', 'demand', 'match'] },
     { id: 'network', label: t('network'), hint: 'Professional social network', icon: Network, keywords: ['social', 'follow', 'community'] },
     { id: 'mentors', label: t('mentors'), hint: 'Book 1:1 mentor sessions', icon: GraduationCap, keywords: ['mentor', 'coach', 'book', 'session'] },
+    { id: 'marketplace', label: t('marketplace'), hint: 'Templates, themes & expert content', icon: ShoppingBag, keywords: ['template', 'theme', 'course', 'buy'] },
+    { id: 'briefing', label: t('briefing'), hint: 'Daily & weekly AI career briefings', icon: Sun, keywords: ['daily', 'weekly', 'plan', 'summary'] },
     { id: 'aicenter', label: t('aicenter'), hint: 'Prompts, models & usage', icon: Cpu, keywords: ['ai', 'tokens', 'cost'] },
+    { id: 'analytics', label: t('analytics'), hint: 'Career, business & AI analytics', icon: BarChart3, keywords: ['analytics', 'revenue', 'growth', 'performance'] },
+    { id: 'recruit', label: t('recruit'), hint: 'AI recruitment & candidate search', icon: Briefcase, keywords: ['recruit', 'employer', 'hiring', 'candidates', 'jobs'] },
     { id: 'enterprise', label: t('enterprise'), hint: 'Org career development', icon: Building2, keywords: ['company', 'university', 'employees', 'mobility'] },
-    { id: 'plans', label: t('plans'), hint: 'Subscription & billing', icon: CreditCard, keywords: ['upgrade', 'invoice'] },
+    { id: 'security', label: t('security'), hint: 'MFA, GDPR, audit & privacy', icon: Shield, keywords: ['security', 'mfa', 'gdpr', 'privacy', 'export', 'delete'] },
+    { id: 'plans', label: t('plans'), hint: 'Subscription, credits & billing', icon: CreditCard, keywords: ['upgrade', 'invoice', 'credits', 'stripe'] },
     { id: 'admin', label: t('admin'), hint: 'Platform admin', icon: ShieldCheck, keywords: ['audit', 'flags', 'revenue'] },
   ]
 

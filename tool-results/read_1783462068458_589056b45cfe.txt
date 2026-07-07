@@ -1,0 +1,858 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→import { Spinner } from '@/components/careeros/loading'
+    10→import { Card, CardContent } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    17→import { Switch } from '@/components/ui/switch'
+    18→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    19→import {
+    20→  Users,
+    21→  Heart,
+    22→  MessageCircle,
+    23→  Send,
+    24→  X,
+    25→  Plus,
+    26→  Check,
+    27→  Globe,
+    28→  Lock,
+    29→  Sparkles,
+    30→  TrendingUp,
+    31→  Award,
+    32→  HelpCircle,
+    33→  Briefcase,
+    34→  PencilLine,
+    35→} from 'lucide-react'
+    36→
+    37→// ---------------------------------------------------------------------------
+    38→// Types (local — the network module owns its shape; types.ts is not modified)
+    39→// ---------------------------------------------------------------------------
+    40→
+    41→type NetworkProfile = {
+    42→  id: string
+    43→  userId: string
+    44→  slug: string
+    45→  bio: string | null
+    46→  headline: string | null
+    47→  tags: string[]
+    48→  visibility: 'public' | 'private'
+    49→  followers: number
+    50→  following: number
+    51→  userName: string | null
+    52→  userHeadline: string | null
+    53→  isFollowing?: boolean
+    54→}
+    55→
+    56→type Post = {
+    57→  id: string
+    58→  type: string
+    59→  title: string | null
+    60→  content: string
+    61→  tags: string[]
+    62→  likes: number
+    63→  comments: number
+    64→  createdAt: string
+    65→  authorId: string
+    66→  authorName: string | null
+    67→  authorHeadline: string | null
+    68→}
+    69→
+    70→type NetworkResponse = {
+    71→  profile: NetworkProfile
+    72→  posts: Post[]
+    73→  suggested: NetworkProfile[]
+    74→}
+    75→
+    76→// ---------------------------------------------------------------------------
+    77→// Post-type styling
+    78→// ---------------------------------------------------------------------------
+    79→
+    80→const POST_TYPES: { value: string; label: string; icon: typeof Sparkles; badge: string }[] = [
+    81→  { value: 'post', label: 'Post', icon: Sparkles, badge: 'bg-secondary text-secondary-foreground' },
+    82→  { value: 'achievement', label: 'Achievement', icon: Award, badge: 'bg-brand-soft text-brand' },
+    83→  { value: 'question', label: 'Question', icon: HelpCircle, badge: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+    84→  { value: 'opportunity', label: 'Opportunity', icon: Briefcase, badge: 'bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300' },
+    85→]
+    86→
+    87→function postTypeMeta(type: string) {
+    88→  return POST_TYPES.find((p) => p.value === type) ?? POST_TYPES[0]
+    89→}
+    90→
+    91→function initials(name: string | null): string {
+    92→  if (!name) return '··'
+    93→  const parts = name.trim().split(/\s+/)
+    94→  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || name.slice(0, 2).toUpperCase()
+    95→}
+    96→
+    97→function timeAgo(iso: string): string {
+    98→  const then = new Date(iso).getTime()
+    99→  const diff = Date.now() - then
+   100→  const m = Math.floor(diff / 60000)
+   101→  if (m < 1) return 'just now'
+   102→  if (m < 60) return `${m}m`
+   103→  const h = Math.floor(m / 60)
+   104→  if (h < 24) return `${h}h`
+   105→  const d = Math.floor(h / 24)
+   106→  if (d < 7) return `${d}d`
+   107→  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+   108→}
+   109→
+   110→// ===========================================================================
+   111→// Module
+   112→// ===========================================================================
+   113→
+   114→export function NetworkModule() {
+   115→  const { t } = useApp()
+   116→  const [data, setData] = useState<NetworkResponse | null>(null)
+   117→  const [loading, setLoading] = useState(true)
+   118→
+   119→  const load = useCallback(async () => {
+   120→    const res = await api<NetworkResponse>('/api/network')
+   121→    setData(res)
+   122→    setLoading(false)
+   123→  }, [])
+   124→
+   125→  useEffect(() => {
+   126→    api<NetworkResponse>('/api/network')
+   127→      .then((res) => {
+   128→        setData(res)
+   129→        setLoading(false)
+   130→      })
+   131→      .catch(() => setLoading(false))
+   132→  }, [])
+   133→
+   134→  const refreshFeed = useCallback(async () => {
+   135→    const res = await api<{ posts: Post[] }>('/api/network')
+   136→    setData((d) => (d ? { ...d, posts: res.posts } : d))
+   137→  }, [])
+   138→
+   139→  const updateSuggested = useCallback(
+   140→    (profileId: string, isFollowing: boolean, newFollowers: number) => {
+   141→      setData((d) =>
+   142→        d
+   143→          ? {
+   144→              ...d,
+   145→              suggested: d.suggested.map((s) =>
+   146→                s.id === profileId ? { ...s, isFollowing, followers: newFollowers } : s
+   147→              ),
+   148→            }
+   149→          : d
+   150→      )
+   151→    },
+   152→    []
+   153→  )
+   154→
+   155→  const updateOwnFollowingCount = useCallback((delta: number) => {
+   156→    setData((d) => (d ? { ...d, profile: { ...d.profile, following: Math.max(0, d.profile.following + delta) } } : d))
+   157→  }, [])
+   158→
+   159→  return (
+   160→    <div>
+   161→      <ModuleHeader
+   162→        title={t('networkTitle')}
+   163→        subtitle={t('networkSub')}
+   164→        icon={Users}
+   165→        actions={
+   166→          data ? (
+   167→            <div className="hidden sm:flex items-center gap-2 rounded-full border bg-card/60 px-3 py-1.5 text-xs">
+   168→              <Users className="h-3.5 w-3.5 text-brand" />
+   169→              <span className="font-medium">{data.profile.followers}</span>
+   170→              <span className="text-muted-foreground">followers</span>
+   171→              <span className="mx-1 h-3 w-px bg-border" />
+   172→              <span className="font-medium">{data.profile.following}</span>
+   173→              <span className="text-muted-foreground">following</span>
+   174→            </div>
+   175→          ) : null
+   176→        }
+   177→      />
+   178→
+   179→      {loading || !data ? (
+   180→        <div className="flex justify-center py-16">
+   181→          <Spinner className="h-6 w-6 text-brand" />
+   182→        </div>
+   183→      ) : (
+   184→        <Tabs defaultValue="feed" className="w-full">
+   185→          <TabsList className="grid w-full max-w-md grid-cols-3 mb-5">
+   186→            <TabsTrigger value="feed">Feed</TabsTrigger>
+   187→            <TabsTrigger value="profile">My Profile</TabsTrigger>
+   188→            <TabsTrigger value="discover">Discover</TabsTrigger>
+   189→          </TabsList>
+   190→
+   191→          <TabsContent value="feed">
+   192→            <FeedTab
+   193→              profile={data.profile}
+   194→              posts={data.posts}
+   195→              onPosted={refreshFeed}
+   196→            />
+   197→          </TabsContent>
+   198→
+   199→          <TabsContent value="profile">
+   200→            <ProfileTab profile={data.profile} posts={data.posts.filter((p) => p.authorId === data.profile.userId)} onSaved={load} />
+   201→          </TabsContent>
+   202→
+   203→          <TabsContent value="discover">
+   204→            <DiscoverTab
+   205→              suggested={data.suggested}
+   206→              onFollowChange={(profileId, following, followers) => {
+   207→                updateSuggested(profileId, following, followers)
+   208→                updateOwnFollowingCount(following ? 1 : -1)
+   209→              }}
+   210→            />
+   211→          </TabsContent>
+   212→        </Tabs>
+   213→      )}
+   214→    </div>
+   215→  )
+   216→}
+   217→
+   218→// ===========================================================================
+   219→// Feed Tab
+   220→// ===========================================================================
+   221→
+   222→function FeedTab({ profile, posts, onPosted }: { profile: NetworkProfile; posts: Post[]; onPosted: () => Promise<void> }) {
+   223→  const { toast } = useToast()
+   224→  const [content, setContent] = useState('')
+   225→  const [title, setTitle] = useState('')
+   226→  const [type, setType] = useState('post')
+   227→  const [tags, setTags] = useState<string[]>([])
+   228→  const [tagDraft, setTagDraft] = useState('')
+   229→  const [busy, setBusy] = useState(false)
+   230→
+   231→  const submit = async () => {
+   232→    const trimmed = content.trim()
+   233→    if (!trimmed) {
+   234→      toast({ title: 'Nothing to post', description: 'Write something before posting.', variant: 'destructive' })
+   235→      return
+   236→    }
+   237→    setBusy(true)
+   238→    try {
+   239→      await api('/api/network', {
+   240→        method: 'POST',
+   241→        body: { content: trimmed, title: title.trim() || undefined, type, tags },
+   242→      })
+   243→      setContent('')
+   244→      setTitle('')
+   245→      setTags([])
+   246→      setTagDraft('')
+   247→      setType('post')
+   248→      toast({ title: 'Posted', description: 'Your post is live in the feed.' })
+   249→      await onPosted()
+   250→    } catch (e) {
+   251→      toast({ title: 'Failed to post', description: (e as Error).message, variant: 'destructive' })
+   252→    } finally {
+   253→      setBusy(false)
+   254→    }
+   255→  }
+   256→
+   257→  const addTag = () => {
+   258→    const v = tagDraft.trim()
+   259→    if (v && !tags.includes(v)) setTags([...tags, v])
+   260→    setTagDraft('')
+   261→  }
+   262→
+   263→  return (
+   264→    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+   265→      <div className="space-y-4">
+   266→        {/* Composer */}
+   267→        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+   268→          <Card className="bg-card/60 backdrop-blur-sm border-border/70">
+   269→            <CardContent className="p-4">
+   270→              <div className="flex gap-3">
+   271→                <Avatar className="h-10 w-10 ring-1 ring-border">
+   272→                  <AvatarFallback className="bg-brand-soft text-brand text-xs font-semibold">
+   273→                    {initials(profile.userName)}
+   274→                  </AvatarFallback>
+   275→                </Avatar>
+   276→                <div className="flex-1 min-w-0">
+   277→                  <div className="flex flex-wrap items-center gap-2 mb-2">
+   278→                    {POST_TYPES.map((p) => {
+   279→                      const Icon = p.icon
+   280→                      const active = type === p.value
+   281→                      return (
+   282→                        <button
+   283→                          key={p.value}
+   284→                          type="button"
+   285→                          onClick={() => setType(p.value)}
+   286→                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition ${
+   287→                            active
+   288→                              ? 'border-brand/40 bg-brand-soft text-brand'
+   289→                              : 'border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+   290→                          }`}
+   291→                        >
+   292→                          <Icon className="h-3 w-3" /> {p.label}
+   293→                        </button>
+   294→                      )
+   295→                    })}
+   296→                  </div>
+   297→
+   298→                  {(type === 'achievement' || type === 'opportunity' || type === 'question') && (
+   299→                    <Input
+   300→                      value={title}
+   301→                      onChange={(e) => setTitle(e.target.value)}
+   302→                      placeholder={
+   303→                        type === 'achievement'
+   304→                          ? 'What did you achieve?'
+   305→                          : type === 'question'
+   306→                          ? 'What do you want to ask?'
+   307→                          : 'What opportunity is this?'
+   308→                      }
+   309→                      className="mb-2 h-9 text-sm"
+   310→                    />
+   311→                  )}
+   312→
+   313→                  <Textarea
+   314→                    value={content}
+   315→                    onChange={(e) => setContent(e.target.value)}
+   316→                    placeholder="Share an insight, win, or question with the network…"
+   317→                    rows={3}
+   318→                    className="resize-none text-sm"
+   319→                  />
+   320→
+   321→                  <TagChips tags={tags} draft={tagDraft} setDraft={setTagDraft} onAdd={addTag} onRemove={(i) => setTags(tags.filter((_, idx) => idx !== i))} />
+   322→
+   323→                  <div className="flex items-center justify-between mt-3">
+   324→                    <span className="text-[11px] text-muted-foreground">{content.length} chars</span>
+   325→                    <Button
+   326→                      size="sm"
+   327→                      onClick={submit}
+   328→                      disabled={busy || !content.trim()}
+   329→                      className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   330→                    >
+   331→                      {busy ? <Spinner className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+   332→                      Post
+   333→                    </Button>
+   334→                  </div>
+   335→                </div>
+   336→              </div>
+   337→            </CardContent>
+   338→          </Card>
+   339→        </motion.div>
+   340→
+   341→        {/* Feed */}
+   342→        <div className="space-y-3">
+   343→          {posts.length === 0 ? (
+   344→            <Card>
+   345→              <CardContent className="p-10 text-center text-sm text-muted-foreground">
+   346→                No posts yet. Be the first to share something with the network.
+   347→              </CardContent>
+   348→            </Card>
+   349→          ) : (
+   350→            posts.map((post, i) => (
+   351→              <motion.div
+   352→                key={post.id}
+   353→                initial={{ opacity: 0, y: 8 }}
+   354→                animate={{ opacity: 1, y: 0 }}
+   355→                transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.2) }}
+   356→              >
+   357→                <PostCard post={post} />
+   358→              </motion.div>
+   359→            ))
+   360→          )}
+   361→        </div>
+   362→      </div>
+   363→
+   364→      {/* Sidebar — your profile snapshot */}
+   365→      <aside className="hidden lg:block">
+   366→        <Card className="bg-card/60 backdrop-blur-sm border-border/70 sticky top-4">
+   367→          <CardContent className="p-5">
+   368→            <div className="flex items-center gap-3 mb-3">
+   369→              <Avatar className="h-12 w-12 ring-1 ring-border">
+   370→                <AvatarFallback className="bg-brand-soft text-brand text-sm font-semibold">
+   371→                  {initials(profile.userName)}
+   372→                </AvatarFallback>
+   373→              </Avatar>
+   374→              <div className="min-w-0">
+   375→                <div className="font-semibold text-sm truncate">{profile.userName}</div>
+   376→                <div className="text-xs text-muted-foreground truncate">{profile.headline}</div>
+   377→              </div>
+   378→            </div>
+   379→            <p className="text-xs text-muted-foreground line-clamp-3 mb-3">
+   380→              {profile.bio || 'No bio yet. Switch to My Profile to add one.'}
+   381→            </p>
+   382→            <div className="grid grid-cols-2 gap-2 mb-3">
+   383→              <div className="rounded-lg border bg-background/50 p-2.5 text-center">
+   384→                <div className="text-lg font-semibold text-brand">{profile.followers}</div>
+   385→                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Followers</div>
+   386→              </div>
+   387→              <div className="rounded-lg border bg-background/50 p-2.5 text-center">
+   388→                <div className="text-lg font-semibold text-brand">{profile.following}</div>
+   389→                <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Following</div>
+   390→              </div>
+   391→            </div>
+   392→            {profile.tags.length > 0 && (
+   393→              <div className="flex flex-wrap gap-1.5">
+   394→                {profile.tags.slice(0, 4).map((tag) => (
+   395→                  <Badge key={tag} variant="outline" className="text-[10px] font-normal">
+   396→                    {tag}
+   397→                  </Badge>
+   398→                ))}
+   399→              </div>
+   400→            )}
+   401→          </CardContent>
+   402→        </Card>
+   403→      </aside>
+   404→    </div>
+   405→  )
+   406→}
+   407→
+   408→function PostCard({ post }: { post: Post }) {
+   409→  const meta = postTypeMeta(post.type)
+   410→  const Icon = meta.icon
+   411→  return (
+   412→    <Card className="bg-card/60 backdrop-blur-sm border-border/70 hover:border-border transition-colors">
+   413→      <CardContent className="p-4">
+   414→        <div className="flex items-start gap-3">
+   415→          <Avatar className="h-10 w-10 ring-1 ring-border shrink-0">
+   416→            <AvatarFallback className="bg-muted text-foreground text-xs font-semibold">
+   417→              {initials(post.authorName)}
+   418→            </AvatarFallback>
+   419→          </Avatar>
+   420→          <div className="flex-1 min-w-0">
+   421→            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+   422→              <span className="font-semibold text-sm truncate">{post.authorName || 'Anonymous'}</span>
+   423→              <span className="text-[11px] text-muted-foreground truncate">{post.authorHeadline}</span>
+   424→              <span className="text-[11px] text-muted-foreground">· {timeAgo(post.createdAt)}</span>
+   425→            </div>
+   426→
+   427→            <div className="mt-1.5">
+   428→              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${meta.badge}`}>
+   429→                <Icon className="h-2.5 w-2.5" /> {meta.label}
+   430→              </span>
+   431→            </div>
+   432→
+   433→            {post.title && <h4 className="font-medium text-sm mt-2 leading-snug">{post.title}</h4>}
+   434→            <p className="text-sm text-foreground/90 mt-1 whitespace-pre-wrap leading-relaxed">{post.content}</p>
+   435→
+   436→            {post.tags.length > 0 && (
+   437→              <div className="flex flex-wrap gap-1.5 mt-2.5">
+   438→                {post.tags.map((tag) => (
+   439→                  <span key={tag} className="text-[10px] text-brand bg-brand-soft/60 rounded-full px-2 py-0.5">
+   440→                    #{tag}
+   441→                  </span>
+   442→                ))}
+   443→              </div>
+   444→            )}
+   445→
+   446→            <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
+   447→              <button className="inline-flex items-center gap-1 hover:text-brand transition-colors" type="button">
+   448→                <Heart className="h-3.5 w-3.5" /> {post.likes}
+   449→              </button>
+   450→              <button className="inline-flex items-center gap-1 hover:text-brand transition-colors" type="button">
+   451→                <MessageCircle className="h-3.5 w-3.5" /> {post.comments}
+   452→              </button>
+   453→            </div>
+   454→          </div>
+   455→        </div>
+   456→      </CardContent>
+   457→    </Card>
+   458→  )
+   459→}
+   460→
+   461→// ===========================================================================
+   462→// Profile Tab
+   463→// ===========================================================================
+   464→
+   465→function ProfileTab({
+   466→  profile,
+   467→  posts,
+   468→  onSaved,
+   469→}: {
+   470→  profile: NetworkProfile
+   471→  posts: Post[]
+   472→  onSaved: () => Promise<void>
+   473→}) {
+   474→  const { toast } = useToast()
+   475→  const [bio, setBio] = useState(profile.bio ?? '')
+   476→  const [headline, setHeadline] = useState(profile.headline ?? '')
+   477→  const [tags, setTags] = useState<string[]>(profile.tags)
+   478→  const [tagDraft, setTagDraft] = useState('')
+   479→  const [visibility, setVisibility] = useState<'public' | 'private'>(profile.visibility)
+   480→  const [busy, setBusy] = useState(false)
+   481→  const [dirty, setDirty] = useState(false)
+   482→
+   483→  // Re-sync if the upstream profile changes after save/refresh.
+   484→  useEffect(() => {
+   485→    setBio(profile.bio ?? '')
+   486→    setHeadline(profile.headline ?? '')
+   487→    setTags(profile.tags)
+   488→    setVisibility(profile.visibility)
+   489→    setDirty(false)
+   490→  }, [profile.id, profile.bio, profile.headline, profile.visibility, profile.tags.join(',')])
+   491→
+   492→  const addTag = () => {
+   493→    const v = tagDraft.trim()
+   494→    if (v && !tags.includes(v)) {
+   495→      setTags([...tags, v])
+   496→      setDirty(true)
+   497→    }
+   498→    setTagDraft('')
+   499→  }
+   500→
+   501→  const save = async () => {
+   502→    setBusy(true)
+   503→    try {
+   504→      await api(`/api/network/${profile.slug}`, {
+   505→        method: 'PUT',
+   506→        body: {
+   507→          bio: bio.trim() || null,
+   508→          headline: headline.trim() || null,
+   509→          tags,
+   510→          visibility,
+   511→        },
+   512→      })
+   513→      setDirty(false)
+   514→      toast({ title: 'Profile saved', description: 'Your network profile is updated.' })
+   515→      await onSaved()
+   516→    } catch (e) {
+   517→      toast({ title: 'Save failed', description: (e as Error).message, variant: 'destructive' })
+   518→    } finally {
+   519→      setBusy(false)
+   520→    }
+   521→  }
+   522→
+   523→  return (
+   524→    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-5">
+   525→      <div className="space-y-4">
+   526→        {/* Header card */}
+   527→        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+   528→          <Card className="bg-card/60 backdrop-blur-sm border-border/70">
+   529→            <CardContent className="p-5">
+   530→              <div className="flex items-start gap-4">
+   531→                <Avatar className="h-16 w-16 ring-2 ring-brand/30 shrink-0">
+   532→                  <AvatarFallback className="bg-brand-soft text-brand text-lg font-semibold">
+   533→                    {initials(profile.userName)}
+   534→                  </AvatarFallback>
+   535→                </Avatar>
+   536→                <div className="flex-1 min-w-0">
+   537→                  <div className="flex items-center gap-2 flex-wrap">
+   538→                    <h3 className="text-lg font-semibold">{profile.userName}</h3>
+   539→                    {visibility === 'public' ? (
+   540→                      <Badge variant="outline" className="text-[10px] gap-1 text-brand border-brand/30">
+   541→                        <Globe className="h-2.5 w-2.5" /> Public
+   542→                      </Badge>
+   543→                    ) : (
+   544→                      <Badge variant="outline" className="text-[10px] gap-1 text-muted-foreground">
+   545→                        <Lock className="h-2.5 w-2.5" /> Private
+   546→                      </Badge>
+   547→                    )}
+   548→                  </div>
+   549→                  <p className="text-sm text-muted-foreground mt-0.5">{profile.headline || 'No headline yet'}</p>
+   550→                  <div className="flex items-center gap-4 mt-2 text-xs">
+   551→                    <span><strong className="text-foreground">{profile.followers}</strong> <span className="text-muted-foreground">followers</span></span>
+   552→                    <span><strong className="text-foreground">{profile.following}</strong> <span className="text-muted-foreground">following</span></span>
+   553→                    <span className="text-muted-foreground">@{profile.slug}</span>
+   554→                  </div>
+   555→                </div>
+   556→              </div>
+   557→            </CardContent>
+   558→          </Card>
+   559→        </motion.div>
+   560→
+   561→        {/* Edit form */}
+   562→        <Card className="bg-card/60 backdrop-blur-sm border-border/70">
+   563→          <CardContent className="p-5">
+   564→            <div className="flex items-center gap-2 mb-4">
+   565→              <PencilLine className="h-4 w-4 text-brand" />
+   566→              <h3 className="font-semibold text-sm">Edit profile</h3>
+   567→            </div>
+   568→
+   569→            <div className="space-y-4">
+   570→              <div>
+   571→                <Label className="text-xs text-muted-foreground">Headline</Label>
+   572→                <Input
+   573→                  value={headline}
+   574→                  onChange={(e) => { setHeadline(e.target.value); setDirty(true) }}
+   575→                  placeholder="e.g. Senior Engineer @ Vercel · Building dev tools"
+   576→                  className="mt-1 h-9 text-sm"
+   577→                />
+   578→              </div>
+   579→
+   580→              <div>
+   581→                <Label className="text-xs text-muted-foreground">Bio</Label>
+   582→                <Textarea
+   583→                  value={bio}
+   584→                  onChange={(e) => { setBio(e.target.value); setDirty(true) }}
+   585→                  placeholder="Tell the network who you are, what you build, and what you care about."
+   586→                  rows={4}
+   587→                  className="mt-1 text-sm resize-none"
+   588→                />
+   589→                <p className="text-[10px] text-muted-foreground mt-1">{bio.length} characters</p>
+   590→              </div>
+   591→
+   592→              <div>
+   593→                <Label className="text-xs text-muted-foreground">Expertise tags</Label>
+   594→                <TagChips
+   595→                  tags={tags}
+   596→                  draft={tagDraft}
+   597→                  setDraft={setTagDraft}
+   598→                  onAdd={addTag}
+   599→                  onRemove={(i) => { setTags(tags.filter((_, idx) => idx !== i)); setDirty(true) }}
+   600→                />
+   601→              </div>
+   602→
+   603→              <div className="flex items-center justify-between rounded-lg border bg-background/40 px-3 py-2.5">
+   604→                <div>
+   605→                  <div className="text-sm font-medium flex items-center gap-1.5">
+   606→                    {visibility === 'public' ? <Globe className="h-3.5 w-3.5 text-brand" /> : <Lock className="h-3.5 w-3.5 text-muted-foreground" />}
+   607→                    Public profile
+   608→                  </div>
+   609→                  <p className="text-[11px] text-muted-foreground">When on, anyone can view your profile by slug.</p>
+   610→                </div>
+   611→                <Switch
+   612→                  checked={visibility === 'public'}
+   613→                  onCheckedChange={(v) => { setVisibility(v ? 'public' : 'private'); setDirty(true) }}
+   614→                />
+   615→              </div>
+   616→
+   617→              <div className="flex justify-end gap-2 pt-1">
+   618→                <Button
+   619→                  size="sm"
+   620→                  onClick={save}
+   621→                  disabled={busy || !dirty}
+   622→                  className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   623→                >
+   624→                  {busy ? <Spinner className="h-3.5 w-3.5" /> : null}
+   625→                  Save changes
+   626→                </Button>
+   627→              </div>
+   628→            </div>
+   629→          </CardContent>
+   630→        </Card>
+   631→
+   632→        {/* Own posts */}
+   633→        <div>
+   634→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1">Your posts</h4>
+   635→          <div className="space-y-3">
+   636→            {posts.length === 0 ? (
+   637→              <Card>
+   638→                <CardContent className="p-8 text-center text-sm text-muted-foreground">
+   639→                  You haven&apos;t posted yet. Head to the Feed tab to share something.
+   640→                </CardContent>
+   641→              </Card>
+   642→            ) : (
+   643→              posts.map((post) => <PostCard key={post.id} post={post} />)
+   644→            )}
+   645→          </div>
+   646→        </div>
+   647→      </div>
+   648→
+   649→      {/* Tip card */}
+   650→      <aside className="hidden lg:block">
+   651→        <Card className="bg-card/60 backdrop-blur-sm border-border/70 sticky top-4">
+   652→          <CardContent className="p-5">
+   653→            <div className="flex items-center gap-2 mb-2">
+   654→              <Sparkles className="h-4 w-4 text-brand" />
+   655→              <h4 className="font-semibold text-sm">Profile tips</h4>
+   656→            </div>
+   657→            <ul className="space-y-2 text-xs text-muted-foreground">
+   658→              <li className="flex gap-2"><TrendingUp className="h-3.5 w-3.5 text-brand shrink-0 mt-0.5" /> Profiles with a clear headline get 4× more profile views.</li>
+   659→              <li className="flex gap-2"><Award className="h-3.5 w-3.5 text-brand shrink-0 mt-0.5" /> Add 3–6 expertise tags so others can find you in Discover.</li>
+   660→              <li className="flex gap-2"><Users className="h-3.5 w-3.5 text-brand shrink-0 mt-0.5" /> Posting weekly keeps your profile in the network feed.</li>
+   661→            </ul>
+   662→          </CardContent>
+   663→        </Card>
+   664→      </aside>
+   665→    </div>
+   666→  )
+   667→}
+   668→
+   669→// ===========================================================================
+   670→// Discover Tab
+   671→// ===========================================================================
+   672→
+   673→function DiscoverTab({
+   674→  suggested,
+   675→  onFollowChange,
+   676→}: {
+   677→  suggested: NetworkProfile[]
+   678→  onFollowChange: (profileId: string, following: boolean, followers: number) => void
+   679→}) {
+   680→  const { toast } = useToast()
+   681→  const [pending, setPending] = useState<string | null>(null)
+   682→
+   683→  const toggleFollow = async (p: NetworkProfile) => {
+   684→    setPending(p.id)
+   685→    try {
+   686→      const res = await api<{ following: boolean; followers: number }>('/api/network/follow', {
+   687→        method: 'POST',
+   688→        body: { followeeId: p.id },
+   689→      })
+   690→      onFollowChange(p.id, res.following, res.followers)
+   691→      toast({
+   692→        title: res.following ? `Following ${p.userName}` : `Unfollowed ${p.userName}`,
+   693→        description: res.following ? "You'll see their posts in your feed." : undefined,
+   694→      })
+   695→    } catch (e) {
+   696→      toast({ title: 'Action failed', description: (e as Error).message, variant: 'destructive' })
+   697→    } finally {
+   698→      setPending(null)
+   699→    }
+   700→  }
+   701→
+   702→  return (
+   703→    <div>
+   704→      <div className="flex items-center justify-between mb-4">
+   705→        <p className="text-sm text-muted-foreground">
+   706→          {suggested.length} professional{suggested.length === 1 ? '' : 's'} to follow
+   707→        </p>
+   708→      </div>
+   709→
+   710→      {suggested.length === 0 ? (
+   711→        <Card>
+   712→          <CardContent className="p-10 text-center text-sm text-muted-foreground">
+   713→            No suggestions yet. Check back later for new professionals.
+   714→          </CardContent>
+   715→        </Card>
+   716→      ) : (
+   717→        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+   718→          {suggested.map((p, i) => (
+   719→            <motion.div
+   720→              key={p.id}
+   721→              initial={{ opacity: 0, y: 8 }}
+   722→              animate={{ opacity: 1, y: 0 }}
+   723→              transition={{ duration: 0.25, delay: Math.min(i * 0.04, 0.25) }}
+   724→            >
+   725→              <Card className="bg-card/60 backdrop-blur-sm border-border/70 h-full flex flex-col hover:border-brand/30 transition-colors">
+   726→                <CardContent className="p-5 flex-1 flex flex-col">
+   727→                  <div className="flex items-start gap-3 mb-3">
+   728→                    <Avatar className="h-12 w-12 ring-1 ring-border shrink-0">
+   729→                      <AvatarFallback className="bg-brand-soft text-brand text-sm font-semibold">
+   730→                        {initials(p.userName)}
+   731→                      </AvatarFallback>
+   732→                    </Avatar>
+   733→                    <div className="flex-1 min-w-0">
+   734→                      <div className="font-semibold text-sm truncate">{p.userName}</div>
+   735→                      <div className="text-xs text-muted-foreground truncate">{p.headline}</div>
+   736→                    </div>
+   737→                  </div>
+   738→
+   739→                  <p className="text-xs text-muted-foreground line-clamp-3 mb-3 flex-1">
+   740→                    {p.bio || 'No bio yet.'}
+   741→                  </p>
+   742→
+   743→                  {p.tags.length > 0 && (
+   744→                    <div className="flex flex-wrap gap-1.5 mb-3">
+   745→                      {p.tags.slice(0, 3).map((tag) => (
+   746→                        <Badge key={tag} variant="outline" className="text-[10px] font-normal">
+   747→                          {tag}
+   748→                        </Badge>
+   749→                      ))}
+   750→                    </div>
+   751→                  )}
+   752→
+   753→                  <div className="flex items-center justify-between">
+   754→                    <div className="text-[11px] text-muted-foreground">
+   755→                      <span className="font-medium text-foreground">{p.followers}</span> followers ·{' '}
+   756→                      <span className="font-medium text-foreground">{p.following}</span> following
+   757→                    </div>
+   758→                    <Button
+   759→                      size="sm"
+   760→                      variant={p.isFollowing ? 'outline' : 'default'}
+   761→                      onClick={() => toggleFollow(p)}
+   762→                      disabled={pending === p.id}
+   763→                      className={
+   764→                        p.isFollowing
+   765→                          ? 'rounded-full h-8 text-xs'
+   766→                          : 'rounded-full h-8 text-xs bg-brand text-brand-foreground hover:bg-brand/90'
+   767→                      }
+   768→                    >
+   769→                      {pending === p.id ? (
+   770→                        <Spinner className="h-3 w-3" />
+   771→                      ) : p.isFollowing ? (
+   772→                        <>
+   773→                          <Check className="h-3 w-3" /> Following
+   774→                        </>
+   775→                      ) : (
+   776→                        <>
+   777→                          <Plus className="h-3 w-3" /> Follow
+   778→                        </>
+   779→                      )}
+   780→                    </Button>
+   781→                  </div>
+   782→                </CardContent>
+   783→              </Card>
+   784→            </motion.div>
+   785→          ))}
+   786→        </div>
+   787→      )}
+   788→    </div>
+   789→  )
+   790→}
+   791→
+   792→// ===========================================================================
+   793→// Shared — Tag chip input
+   794→// ===========================================================================
+   795→
+   796→function TagChips({
+   797→  tags,
+   798→  draft,
+   799→  setDraft,
+   800→  onAdd,
+   801→  onRemove,
+   802→}: {
+   803→  tags: string[]
+   804→  draft: string
+   805→  setDraft: (v: string) => void
+   806→  onAdd: () => void
+   807→  onRemove: (index: number) => void
+   808→}) {
+   809→  return (
+   810→    <div className="mt-1">
+   811→      <div className="flex gap-2">
+   812→        <Input
+   813→          value={draft}
+   814→          onChange={(e) => setDraft(e.target.value)}
+   815→          onKeyDown={(e) => {
+   816→            if (e.key === 'Enter' || e.key === ',') {
+   817→              e.preventDefault()
+   818→              onAdd()
+   819→            }
+   820→          }}
+   821→          placeholder="Add a tag (e.g. Distributed Systems)"
+   822→          className="h-8 text-xs"
+   823→        />
+   824→        <Button
+   825→          type="button"
+   826→          size="sm"
+   827→          variant="outline"
+   828→          onClick={onAdd}
+   829→          disabled={!draft.trim()}
+   830→          className="h-8 px-2.5 rounded-full"
+   831→        >
+   832→          <Plus className="h-3 w-3" />
+   833→        </Button>
+   834→      </div>
+   835→      {tags.length > 0 && (
+   836→        <div className="flex flex-wrap gap-1.5 mt-2">
+   837→          {tags.map((tag, i) => (
+   838→            <span
+   839→              key={tag}
+   840→              className="inline-flex items-center gap-1 rounded-full bg-brand-soft/70 text-brand text-[11px] font-medium px-2 py-0.5"
+   841→            >
+   842→              {tag}
+   843→              <button
+   844→                type="button"
+   845→                onClick={() => onRemove(i)}
+   846→                className="hover:bg-brand/20 rounded-full p-0.5"
+   847→                aria-label={`Remove ${tag}`}
+   848→              >
+   849→                <X className="h-2.5 w-2.5" />
+   850→              </button>
+   851→            </span>
+   852→          ))}
+   853→        </div>
+   854→      )}
+   855→    </div>
+   856→  )
+   857→}
+   858→

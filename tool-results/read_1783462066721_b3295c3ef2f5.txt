@@ -1,0 +1,718 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→import { LoadingScreen } from '@/components/careeros/loading'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Progress } from '@/components/ui/progress'
+    13→import { Switch } from '@/components/ui/switch'
+    14→import { Slider } from '@/components/ui/slider'
+    15→import {
+    16→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    17→} from '@/components/ui/table'
+    18→import {
+    19→  ShieldCheck, Users, Cpu, DollarSign, Activity, Server, TrendingUp,
+    20→  Zap, ScrollText, Flag, Coins,
+    21→} from 'lucide-react'
+    22→import {
+    23→  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+    24→  AreaChart, Area, PieChart, Pie, Cell,
+    25→} from 'recharts'
+    26→
+    27→const FEATURE_LABELS: Record<string, string> = {
+    28→  'resume-enhance': 'Resume AI',
+    29→  'ats-analyze': 'ATS',
+    30→  'cover-letter': 'Cover',
+    31→  interview: 'Interview',
+    32→  coach: 'Coach',
+    33→  skills: 'Skills',
+    34→}
+    35→
+    36→type DashboardData = {
+    37→  stats: {
+    38→    resumes: number
+    39→    jobs: number
+    40→    interviews: number
+    41→    letters: number
+    42→    coachSessions: number
+    43→    avgAts: number
+    44→    aiCalls: number
+    45→  }
+    46→  featureUsage: Record<string, number>
+    47→}
+    48→
+    49→type AuditEntry = {
+    50→  id: string
+    51→  userId: string | null
+    52→  userName: string | null
+    53→  action: string
+    54→  entity: string
+    55→  entityId: string | null
+    56→  meta: string | null
+    57→  createdAt: string
+    58→}
+    59→
+    60→type FeatureFlag = {
+    61→  id: string
+    62→  key: string
+    63→  enabled: boolean
+    64→  description: string | null
+    65→  rollout: number
+    66→  updatedAt: string
+    67→}
+    68→
+    69→type AiCenter = {
+    70→  usage: {
+    71→    id: string
+    72→    feature: string
+    73→    model: string | null
+    74→    tokens: number
+    75→    cost: number
+    76→    latencyMs: number | null
+    77→    success: boolean
+    78→    createdAt: string
+    79→  }[]
+    80→  totals: { calls: number; tokens: number; cost: number; avgLatency: number }
+    81→}
+    82→
+    83→const PIE_COLORS = [
+    84→  'oklch(0.7 0.15 162)',
+    85→  'oklch(0.7 0.13 200)',
+    86→  'oklch(0.75 0.15 80)',
+    87→  'oklch(0.65 0.2 300)',
+    88→  'oklch(0.68 0.2 30)',
+    89→  'oklch(0.6 0.1 240)',
+    90→]
+    91→
+    92→const TIER_COLORS: Record<string, string> = {
+    93→  fast: 'oklch(0.7 0.15 162)',
+    94→  balanced: 'oklch(0.7 0.13 200)',
+    95→  quality: 'oklch(0.75 0.15 80)',
+    96→}
+    97→
+    98→export function AdminModule() {
+    99→  const { t } = useApp()
+   100→  const { toast } = useToast()
+   101→  const [data, setData] = useState<DashboardData | null>(null)
+   102→  const [audits, setAudits] = useState<AuditEntry[]>([])
+   103→  const [flags, setFlags] = useState<FeatureFlag[]>([])
+   104→  const [ai, setAi] = useState<AiCenter | null>(null)
+   105→
+   106→  useEffect(() => {
+   107→    api<DashboardData>('/api/dashboard').then(setData).catch(() => {})
+   108→    api<{ logs: AuditEntry[] }>('/api/audit?limit=12')
+   109→      .then((r) => setAudits(r.logs))
+   110→      .catch(() => {})
+   111→    api<{ flags: FeatureFlag[] }>('/api/flags')
+   112→      .then((r) => setFlags(r.flags))
+   113→      .catch(() => {})
+   114→    api<AiCenter>('/api/aicenter').then(setAi).catch(() => {})
+   115→  }, [])
+   116→
+   117→  if (!data) return <LoadingScreen label="Loading platform data…" />
+   118→
+   119→  const usageData = Object.entries(data.featureUsage).map(([k, v]) => ({
+   120→    name: FEATURE_LABELS[k] || k,
+   121→    calls: v,
+   122→  }))
+   123→
+   124→  // Simulated platform KPIs (single-tenant demo)
+   125→  const platformUsers = 12480 + data.stats.aiCalls * 3
+   126→  const mrr = 38420 + data.stats.aiCalls * 12
+   127→  const activeNow = 340 + (data.stats.aiCalls % 60)
+   128→
+   129→  const kpis = [
+   130→    {
+   131→      label: t('totalUsers'),
+   132→      value: platformUsers.toLocaleString(),
+   133→      icon: Users,
+   134→      delta: '+12.4%',
+   135→      color: 'var(--brand)',
+   136→    },
+   137→    {
+   138→      label: t('aiCalls'),
+   139→      value: (data.stats.aiCalls + 48210).toLocaleString(),
+   140→      icon: Cpu,
+   141→      delta: '+8.1%',
+   142→      color: 'oklch(0.7 0.13 200)',
+   143→    },
+   144→    {
+   145→      label: t('mrr'),
+   146→      value: `$${mrr.toLocaleString()}`,
+   147→      icon: DollarSign,
+   148→      delta: '+18.7%',
+   149→      color: 'oklch(0.75 0.15 80)',
+   150→    },
+   151→    {
+   152→      label: t('activeNow'),
+   153→      value: activeNow.toString(),
+   154→      icon: Activity,
+   155→      delta: 'live',
+   156→      color: 'oklch(0.65 0.2 30)',
+   157→    },
+   158→  ]
+   159→
+   160→  const revenueTrend = [
+   161→    { m: 'Jan', v: 22100 },
+   162→    { m: 'Feb', v: 26800 },
+   163→    { m: 'Mar', v: 29400 },
+   164→    { m: 'Apr', v: 33200 },
+   165→    { m: 'May', v: 35100 },
+   166→    { m: 'Jun', v: mrr },
+   167→  ]
+   168→
+   169→  const planDistribution = [
+   170→    { plan: 'Free', pct: 62 },
+   171→    { plan: 'Pro', pct: 24 },
+   172→    { plan: 'Premium', pct: 11 },
+   173→    { plan: 'Enterprise', pct: 3 },
+   174→  ]
+   175→
+   176→  // AI cost monitoring computations (from aicenter usage rows)
+   177→  const usageRows = ai?.usage ?? []
+   178→  const totalCost = ai?.totals.cost ?? 0
+   179→  const costByModelMap = usageRows.reduce<Record<string, number>>((acc, u) => {
+   180→    const m = u.model || 'balanced'
+   181→    acc[m] = (acc[m] || 0) + u.cost
+   182→    return acc
+   183→  }, {})
+   184→  const costByModel = Object.entries(costByModelMap).map(([k, v]) => ({
+   185→    name: k,
+   186→    value: Number(v.toFixed(4)),
+   187→  }))
+   188→  const costByFeatureMap = usageRows.reduce<Record<string, number>>((acc, u) => {
+   189→    acc[u.feature] = (acc[u.feature] || 0) + u.cost
+   190→    return acc
+   191→  }, {})
+   192→  const topFeatures = Object.entries(costByFeatureMap)
+   193→    .map(([k, v]) => ({
+   194→      name: FEATURE_LABELS[k] || k,
+   195→      value: Number(v.toFixed(4)),
+   196→    }))
+   197→    .sort((a, b) => b.value - a.value)
+   198→    .slice(0, 5)
+   199→  const maxFeatureCost = topFeatures[0]?.value || 1
+   200→
+   201→  const toggleFlag = async (key: string, enabled: boolean) => {
+   202→    setFlags((fs) =>
+   203→      fs.map((f) => (f.key === key ? { ...f, enabled } : f))
+   204→    )
+   205→    try {
+   206→      await api('/api/flags', { method: 'PUT', body: { key, enabled } })
+   207→      toast({
+   208→        title: `Flag ${enabled ? 'enabled' : 'disabled'}`,
+   209→        description: key,
+   210→      })
+   211→    } catch (e) {
+   212→      setFlags((fs) =>
+   213→        fs.map((f) => (f.key === key ? { ...f, enabled: !enabled } : f))
+   214→      )
+   215→      toast({
+   216→        title: 'Update failed',
+   217→        description: (e as Error).message,
+   218→        variant: 'destructive',
+   219→      })
+   220→    }
+   221→  }
+   222→
+   223→  const setRollout = async (key: string, rollout: number) => {
+   224→    setFlags((fs) =>
+   225→      fs.map((f) => (f.key === key ? { ...f, rollout } : f))
+   226→    )
+   227→    try {
+   228→      await api('/api/flags', { method: 'PUT', body: { key, rollout } })
+   229→    } catch (e) {
+   230→      toast({
+   231→        title: 'Rollout update failed',
+   232→        description: (e as Error).message,
+   233→        variant: 'destructive',
+   234→      })
+   235→    }
+   236→  }
+   237→
+   238→  return (
+   239→    <div>
+   240→      <ModuleHeader title={t('adminTitle')} subtitle={t('adminSub')} icon={ShieldCheck} />
+   241→
+   242→      {/* KPI cards (KEPT) */}
+   243→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+   244→        {kpis.map((k, i) => {
+   245→          const Icon = k.icon
+   246→          return (
+   247→            <motion.div
+   248→              key={k.label}
+   249→              initial={{ opacity: 0, y: 10 }}
+   250→              animate={{ opacity: 1, y: 0 }}
+   251→              transition={{ delay: i * 0.05 }}
+   252→            >
+   253→              <Card>
+   254→                <CardContent className="p-5">
+   255→                  <div className="flex items-start justify-between">
+   256→                    <div>
+   257→                      <p className="text-xs text-muted-foreground font-medium">
+   258→                        {k.label}
+   259→                      </p>
+   260→                      <p className="text-2xl font-semibold tracking-tight mt-1.5">
+   261→                        {k.value}
+   262→                      </p>
+   263→                      <div className="flex items-center gap-1 mt-1">
+   264→                        <TrendingUp className="h-3 w-3 text-brand" />
+   265→                        <span className="text-[11px] text-brand font-medium">
+   266→                          {k.delta}
+   267→                        </span>
+   268→                      </div>
+   269→                    </div>
+   270→                    <div
+   271→                      className="h-9 w-9 rounded-lg flex items-center justify-center"
+   272→                      style={{
+   273→                        backgroundColor: `color-mix(in oklch, ${k.color} 14%, transparent)`,
+   274→                        color: k.color,
+   275→                      }}
+   276→                    >
+   277→                      <Icon className="h-4 w-4" />
+   278→                    </div>
+   279→                  </div>
+   280→                </CardContent>
+   281→              </Card>
+   282→            </motion.div>
+   283→          )
+   284→        })}
+   285→      </div>
+   286→
+   287→      {/* Charts (KEPT) */}
+   288→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+   289→        <Card className="lg:col-span-2">
+   290→          <CardHeader className="pb-2">
+   291→            <CardTitle className="text-sm font-medium">Revenue Trend</CardTitle>
+   292→          </CardHeader>
+   293→          <CardContent className="pt-2">
+   294→            <div className="h-56">
+   295→              <ResponsiveContainer width="100%" height="100%">
+   296→                <AreaChart data={revenueTrend} margin={{ left: -10, right: 8, top: 8 }}>
+   297→                  <defs>
+   298→                    <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+   299→                      <stop offset="0%" stopColor="var(--brand)" stopOpacity={0.4} />
+   300→                      <stop offset="100%" stopColor="var(--brand)" stopOpacity={0} />
+   301→                    </linearGradient>
+   302→                  </defs>
+   303→                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+   304→                  <XAxis
+   305→                    dataKey="m"
+   306→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   307→                    axisLine={false}
+   308→                    tickLine={false}
+   309→                  />
+   310→                  <YAxis
+   311→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   312→                    axisLine={false}
+   313→                    tickLine={false}
+   314→                    tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+   315→                  />
+   316→                  <Tooltip
+   317→                    contentStyle={{
+   318→                      background: 'var(--card)',
+   319→                      border: '1px solid var(--border)',
+   320→                      borderRadius: 10,
+   321→                      fontSize: 12,
+   322→                    }}
+   323→                    formatter={(v: number) => [`$${v.toLocaleString()}`, 'MRR']}
+   324→                  />
+   325→                  <Area
+   326→                    type="monotone"
+   327→                    dataKey="v"
+   328→                    stroke="var(--brand)"
+   329→                    strokeWidth={2.5}
+   330→                    fill="url(#revGrad)"
+   331→                  />
+   332→                </AreaChart>
+   333→              </ResponsiveContainer>
+   334→            </div>
+   335→          </CardContent>
+   336→        </Card>
+   337→
+   338→        <Card>
+   339→          <CardHeader className="pb-2">
+   340→            <CardTitle className="text-sm font-medium">Plan Distribution</CardTitle>
+   341→          </CardHeader>
+   342→          <CardContent className="pt-2 space-y-3">
+   343→            {planDistribution.map((p) => (
+   344→              <div key={p.plan}>
+   345→                <div className="flex justify-between text-xs mb-1">
+   346→                  <span className="font-medium">{p.plan}</span>
+   347→                  <span className="text-muted-foreground">{p.pct}%</span>
+   348→                </div>
+   349→                <Progress value={p.pct} className="h-1.5" />
+   350→              </div>
+   351→            ))}
+   352→          </CardContent>
+   353→        </Card>
+   354→      </div>
+   355→
+   356→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+   357→        {/* Feature usage (KEPT) */}
+   358→        <Card>
+   359→          <CardHeader className="pb-2">
+   360→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   361→              <Zap className="h-4 w-4 text-brand" /> {t('featureUsage')}
+   362→            </CardTitle>
+   363→          </CardHeader>
+   364→          <CardContent className="pt-2">
+   365→            <div className="h-48">
+   366→              {usageData.length === 0 ? (
+   367→                <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+   368→                  {t('empty')}
+   369→                </div>
+   370→              ) : (
+   371→                <ResponsiveContainer width="100%" height="100%">
+   372→                  <BarChart data={usageData} margin={{ left: -20, right: 8, top: 8 }}>
+   373→                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+   374→                    <XAxis
+   375→                      dataKey="name"
+   376→                      tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+   377→                      axisLine={false}
+   378→                      tickLine={false}
+   379→                    />
+   380→                    <YAxis
+   381→                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   382→                      axisLine={false}
+   383→                      tickLine={false}
+   384→                      allowDecimals={false}
+   385→                    />
+   386→                    <Tooltip
+   387→                      contentStyle={{
+   388→                        background: 'var(--card)',
+   389→                        border: '1px solid var(--border)',
+   390→                        borderRadius: 10,
+   391→                        fontSize: 12,
+   392→                      }}
+   393→                    />
+   394→                    <Bar dataKey="calls" fill="var(--brand)" radius={[4, 4, 0, 0]} />
+   395→                  </BarChart>
+   396→                </ResponsiveContainer>
+   397→              )}
+   398→            </div>
+   399→          </CardContent>
+   400→        </Card>
+   401→
+   402→        {/* System health (KEPT) */}
+   403→        <Card>
+   404→          <CardHeader className="pb-2">
+   405→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   406→              <Server className="h-4 w-4 text-brand" /> System Health
+   407→            </CardTitle>
+   408→          </CardHeader>
+   409→          <CardContent className="pt-2 space-y-3">
+   410→            {[
+   411→              { label: 'API Gateway', value: 99.98, status: 'Operational' },
+   412→              { label: 'AI Gateway', value: 99.91, status: 'Operational' },
+   413→              { label: 'Database', value: 100, status: 'Operational' },
+   414→              { label: 'Background Workers', value: 98.4, status: 'Degraded' },
+   415→            ].map((s) => (
+   416→              <div key={s.label} className="flex items-center justify-between">
+   417→                <div className="flex items-center gap-2">
+   418→                  <span
+   419→                    className={`h-2 w-2 rounded-full ${s.value > 99 ? 'bg-brand' : 'bg-amber-500'}`}
+   420→                  />
+   421→                  <span className="text-sm">{s.label}</span>
+   422→                </div>
+   423→                <div className="flex items-center gap-2">
+   424→                  <span className="text-xs text-muted-foreground">{s.value}%</span>
+   425→                  <Badge
+   426→                    variant="outline"
+   427→                    className={`h-5 px-1.5 text-[9px] ${
+   428→                      s.value > 99
+   429→                        ? 'border-brand/40 text-brand'
+   430→                        : 'border-amber-500/40 text-amber-600'
+   431→                    }`}
+   432→                  >
+   433→                    {s.status}
+   434→                  </Badge>
+   435→                </div>
+   436→              </div>
+   437→            ))}
+   438→            <div className="pt-2 border-t mt-2">
+   439→              <div className="text-xs text-muted-foreground mb-1.5">Your AI usage</div>
+   440→              <div className="flex items-center gap-2">
+   441→                <Progress
+   442→                  value={Math.min((data.stats.aiCalls / 200) * 100, 100)}
+   443→                  className="h-2 flex-1"
+   444→                />
+   445→                <span className="text-xs font-medium">{data.stats.aiCalls} / 200</span>
+   446→              </div>
+   447→              <p className="text-[10px] text-muted-foreground mt-1">
+   448→                Premium plan · resets in 14 days
+   449→              </p>
+   450→            </div>
+   451→          </CardContent>
+   452→        </Card>
+   453→      </div>
+   454→
+   455→      {/* NEW: Audit Log + Feature Flags */}
+   456→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+   457→        {/* Audit Log */}
+   458→        <Card>
+   459→          <CardHeader className="pb-2">
+   460→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   461→              <ScrollText className="h-4 w-4 text-brand" /> {t('auditLog')}
+   462→            </CardTitle>
+   463→          </CardHeader>
+   464→          <CardContent className="pt-2">
+   465→            <div className="max-h-80 overflow-y-auto pe-1">
+   466→              <Table>
+   467→                <TableHeader>
+   468→                  <TableRow>
+   469→                    <TableHead>Action</TableHead>
+   470→                    <TableHead>Entity</TableHead>
+   471→                    <TableHead>User</TableHead>
+   472→                    <TableHead className="text-right">When</TableHead>
+   473→                  </TableRow>
+   474→                </TableHeader>
+   475→                <TableBody>
+   476→                  {audits.length === 0 ? (
+   477→                    <TableRow>
+   478→                      <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-6">
+   479→                        {t('empty')}
+   480→                      </TableCell>
+   481→                    </TableRow>
+   482→                  ) : (
+   483→                    audits.map((a) => (
+   484→                      <TableRow key={a.id}>
+   485→                        <TableCell className="font-mono text-[11px]">{a.action}</TableCell>
+   486→                        <TableCell className="text-xs">
+   487→                          <span className="text-muted-foreground">{a.entity}</span>
+   488→                          {a.entityId && (
+   489→                            <span className="text-[10px] text-muted-foreground/70 block">
+   490→                              {a.entityId.slice(0, 8)}
+   491→                            </span>
+   492→                          )}
+   493→                        </TableCell>
+   494→                        <TableCell className="text-xs">{a.userName ?? 'system'}</TableCell>
+   495→                        <TableCell className="text-right text-[11px] text-muted-foreground">
+   496→                          {new Date(a.createdAt).toLocaleString(undefined, {
+   497→                            month: 'short',
+   498→                            day: 'numeric',
+   499→                            hour: '2-digit',
+   500→                            minute: '2-digit',
+   501→                          })}
+   502→                        </TableCell>
+   503→                      </TableRow>
+   504→                    ))
+   505→                  )}
+   506→                </TableBody>
+   507→              </Table>
+   508→            </div>
+   509→          </CardContent>
+   510→        </Card>
+   511→
+   512→        {/* Feature Flags */}
+   513→        <Card>
+   514→          <CardHeader className="pb-2">
+   515→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   516→              <Flag className="h-4 w-4 text-brand" /> {t('featureFlags')}
+   517→            </CardTitle>
+   518→          </CardHeader>
+   519→          <CardContent className="pt-2">
+   520→            <div className="max-h-80 overflow-y-auto pe-1 space-y-3">
+   521→              {flags.length === 0 ? (
+   522→                <p className="text-xs text-muted-foreground py-6 text-center">
+   523→                  {t('empty')}
+   524→                </p>
+   525→              ) : (
+   526→                flags.map((f) => (
+   527→                  <div
+   528→                    key={f.key}
+   529→                    className="rounded-lg border p-3 hover:border-brand/30 transition-colors"
+   530→                  >
+   531→                    <div className="flex items-start justify-between gap-3">
+   532→                      <div className="min-w-0 flex-1">
+   533→                        <div className="flex items-center gap-2">
+   534→                          <span className="font-mono text-xs font-medium truncate">
+   535→                            {f.key}
+   536→                          </span>
+   537→                          <Badge
+   538→                            variant="outline"
+   539→                            className={`h-5 px-1.5 text-[9px] ${
+   540→                              f.enabled
+   541→                                ? 'border-brand/40 text-brand'
+   542→                                : 'border-muted-foreground/30 text-muted-foreground'
+   543→                            }`}
+   544→                          >
+   545→                            {f.enabled ? 'ON' : 'OFF'}
+   546→                          </Badge>
+   547→                        </div>
+   548→                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">
+   549→                          {f.description || '—'}
+   550→                        </p>
+   551→                      </div>
+   552→                      <Switch
+   553→                        checked={f.enabled}
+   554→                        onCheckedChange={(v) => toggleFlag(f.key, v)}
+   555→                        aria-label={`Toggle ${f.key}`}
+   556→                      />
+   557→                    </div>
+   558→                    <div className="mt-2.5 flex items-center gap-3">
+   559→                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide shrink-0">
+   560→                        Rollout
+   561→                      </span>
+   562→                      <Slider
+   563→                        value={[f.rollout]}
+   564→                        min={0}
+   565→                        max={100}
+   566→                        step={5}
+   567→                        onValueChange={(v) => setRollout(f.key, v[0])}
+   568→                        className="flex-1"
+   569→                        aria-label={`Rollout ${f.key}`}
+   570→                      />
+   571→                      <span className="text-[11px] font-medium tabular-nums w-9 text-right">
+   572→                        {f.rollout}%
+   573→                      </span>
+   574→                    </div>
+   575→                  </div>
+   576→                ))
+   577→              )}
+   578→            </div>
+   579→          </CardContent>
+   580→        </Card>
+   581→      </div>
+   582→
+   583→      {/* NEW: AI Cost Monitoring */}
+   584→      <Card>
+   585→        <CardHeader className="pb-2">
+   586→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   587→            <Coins className="h-4 w-4 text-brand" /> AI Cost Monitoring
+   588→          </CardTitle>
+   589→        </CardHeader>
+   590→        <CardContent className="pt-2">
+   591→          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+   592→            {/* Total + cost by model */}
+   593→            <div className="space-y-3">
+   594→              <div className="rounded-lg border border-brand/20 bg-brand-soft/30 p-4">
+   595→                <div className="text-xs text-muted-foreground uppercase tracking-wide">
+   596→                  Total cost (recent)
+   597→                </div>
+   598→                <div className="text-3xl font-bold tracking-tight mt-1 text-brand">
+   599→                  ${totalCost.toFixed(4)}
+   600→                </div>
+   601→                <div className="text-[11px] text-muted-foreground mt-1">
+   602→                  Across {usageRows.length} AI calls
+   603→                </div>
+   604→              </div>
+   605→              <div>
+   606→                <div className="text-xs font-medium mb-2">Cost by model tier</div>
+   607→                {costByModel.length === 0 ? (
+   608→                  <p className="text-xs text-muted-foreground">{t('empty')}</p>
+   609→                ) : (
+   610→                  <div className="h-40">
+   611→                    <ResponsiveContainer width="100%" height="100%">
+   612→                      <PieChart>
+   613→                        <Pie
+   614→                          data={costByModel}
+   615→                          dataKey="value"
+   616→                          nameKey="name"
+   617→                          cx="50%"
+   618→                          cy="50%"
+   619→                          innerRadius={36}
+   620→                          outerRadius={62}
+   621→                          paddingAngle={3}
+   622→                        >
+   623→                          {costByModel.map((m, i) => (
+   624→                            <Cell
+   625→                              key={i}
+   626→                              fill={TIER_COLORS[m.name] || PIE_COLORS[i % PIE_COLORS.length]}
+   627→                            />
+   628→                          ))}
+   629→                        </Pie>
+   630→                        <Tooltip
+   631→                          contentStyle={{
+   632→                            background: 'var(--card)',
+   633→                            border: '1px solid var(--border)',
+   634→                            borderRadius: 10,
+   635→                            fontSize: 12,
+   636→                          }}
+   637→                          formatter={(v: number) => [`$${v.toFixed(4)}`, 'Cost']}
+   638→                        />
+   639→                      </PieChart>
+   640→                    </ResponsiveContainer>
+   641→                  </div>
+   642→                )}
+   643→                <div className="flex flex-wrap justify-center gap-3 mt-2">
+   644→                  {costByModel.map((m) => (
+   645→                    <div key={m.name} className="flex items-center gap-1.5 text-[11px]">
+   646→                      <span
+   647→                        className="h-2 w-2 rounded-full"
+   648→                        style={{ background: TIER_COLORS[m.name] || 'var(--brand)' }}
+   649→                      />
+   650→                      <span className="capitalize">{m.name}</span>
+   651→                      <span className="text-muted-foreground">${m.value.toFixed(4)}</span>
+   652→                    </div>
+   653→                  ))}
+   654→                </div>
+   655→              </div>
+   656→            </div>
+   657→
+   658→            {/* Top 5 features by cost */}
+   659→            <div className="lg:col-span-2">
+   660→              <div className="text-xs font-medium mb-3">Top 5 features by cost</div>
+   661→              {topFeatures.length === 0 ? (
+   662→                <p className="text-xs text-muted-foreground py-12 text-center">
+   663→                  {t('empty')}
+   664→                </p>
+   665→              ) : (
+   666→                <div className="space-y-3">
+   667→                  {topFeatures.map((f) => (
+   668→                    <div key={f.name}>
+   669→                      <div className="flex justify-between text-xs mb-1.5">
+   670→                        <span className="font-medium">{f.name}</span>
+   671→                        <span className="text-muted-foreground tabular-nums">
+   672→                          ${f.value.toFixed(4)}
+   673→                        </span>
+   674→                      </div>
+   675→                      <Progress
+   676→                        value={Math.max((f.value / maxFeatureCost) * 100, 2)}
+   677→                        className="h-2"
+   678→                      />
+   679→                    </div>
+   680→                  ))}
+   681→                </div>
+   682→              )}
+   683→              <div className="mt-5 pt-4 border-t grid grid-cols-3 gap-3 text-xs">
+   684→                <div>
+   685→                  <div className="text-muted-foreground text-[10px] uppercase tracking-wide">
+   686→                    Avg latency
+   687→                  </div>
+   688→                  <div className="font-semibold mt-0.5">
+   689→                    {ai?.totals.avgLatency ?? 0} ms
+   690→                  </div>
+   691→                </div>
+   692→                <div>
+   693→                  <div className="text-muted-foreground text-[10px] uppercase tracking-wide">
+   694→                    Total tokens
+   695→                  </div>
+   696→                  <div className="font-semibold mt-0.5">
+   697→                    {(ai?.totals.tokens ?? 0).toLocaleString()}
+   698→                  </div>
+   699→                </div>
+   700→                <div>
+   701→                  <div className="text-muted-foreground text-[10px] uppercase tracking-wide">
+   702→                    Cost / 1k calls
+   703→                  </div>
+   704→                  <div className="font-semibold mt-0.5">
+   705→                    ${ai && ai.totals.calls > 0
+   706→                      ? ((ai.totals.cost / ai.totals.calls) * 1000).toFixed(4)
+   707→                      : '0.0000'}
+   708→                  </div>
+   709→                </div>
+   710→              </div>
+   711→            </div>
+   712→          </div>
+   713→        </CardContent>
+   714→      </Card>
+   715→    </div>
+   716→  )
+   717→}
+   718→
