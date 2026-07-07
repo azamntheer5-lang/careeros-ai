@@ -10,19 +10,28 @@ import { Footer } from '@/components/careeros/footer'
 import { LoadingScreen } from '@/components/careeros/loading'
 import { CommandPalette } from '@/components/careeros/command-palette'
 import { Onboarding } from '@/components/careeros/onboarding'
+import { FloatingAssistant } from '@/components/careeros/floating-assistant'
 import { DashboardModule } from '@/components/modules/dashboard'
 import { ProfileModule } from '@/components/modules/profile'
+import { AgentsModule } from '@/components/modules/agents'
+import { GraphModule } from '@/components/modules/graph'
+import { AutomationModule } from '@/components/modules/automation'
 import { ResumeModule } from '@/components/modules/resume'
 import { AtsModule } from '@/components/modules/ats'
 import { CoverModule } from '@/components/modules/cover'
 import { PortfolioModule } from '@/components/modules/portfolio'
 import { BrandingModule } from '@/components/modules/branding'
+import { DocumentsModule } from '@/components/modules/documents'
 import { InterviewModule } from '@/components/modules/interview'
 import { CoachModule } from '@/components/modules/coach'
 import { IntelligenceModule } from '@/components/modules/intelligence'
 import { JobsModule } from '@/components/modules/jobs'
 import { SkillsModule } from '@/components/modules/skills'
+import { MarketModule } from '@/components/modules/market'
+import { NetworkModule } from '@/components/modules/network'
+import { MentorsModule } from '@/components/modules/mentors'
 import { AiCenterModule } from '@/components/modules/aicenter'
+import { EnterpriseModule } from '@/components/modules/enterprise'
 import { PlansModule } from '@/components/modules/plans'
 import { AdminModule } from '@/components/modules/admin'
 
@@ -67,17 +76,25 @@ export default function Page() {
                 >
                   {active === 'dashboard' && <DashboardModule userName={user.name} />}
                   {active === 'profile' && <ProfileModule />}
+                  {active === 'agents' && <AgentsModule />}
+                  {active === 'graph' && <GraphModule />}
+                  {active === 'automation' && <AutomationModule />}
                   {active === 'resume' && <ResumeModule />}
                   {active === 'ats' && <AtsModule />}
                   {active === 'cover' && <CoverModule />}
                   {active === 'portfolio' && <PortfolioModule />}
                   {active === 'branding' && <BrandingModule />}
+                  {active === 'documents' && <DocumentsModule />}
                   {active === 'interview' && <InterviewModule />}
                   {active === 'coach' && <CoachModule />}
                   {active === 'intelligence' && <IntelligenceModule />}
                   {active === 'jobs' && <JobsModule />}
                   {active === 'skills' && <SkillsModule />}
+                  {active === 'market' && <MarketModule />}
+                  {active === 'network' && <NetworkModule />}
+                  {active === 'mentors' && <MentorsModule />}
                   {active === 'aicenter' && <AiCenterModule />}
+                  {active === 'enterprise' && <EnterpriseModule />}
                   {active === 'plans' && <PlansModule />}
                   {active === 'admin' && <AdminModule />}
                 </motion.div>
@@ -89,6 +106,7 @@ export default function Page() {
       <Footer />
       <CommandPalette />
       <Onboarding />
+      <FloatingAssistant />
     </div>
   )
 }

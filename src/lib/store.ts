@@ -18,6 +18,13 @@ export type ModuleId =
   | 'aicenter'
   | 'plans'
   | 'admin'
+  | 'agents'
+  | 'graph'
+  | 'network'
+  | 'mentors'
+  | 'market'
+  | 'documents'
+  | 'enterprise'
 
 type AppState = {
   active: ModuleId

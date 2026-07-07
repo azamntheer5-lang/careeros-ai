@@ -105,6 +105,43 @@ export const PROMPTS: Record<string, PromptDef> = {
     system:
       'You are a personal branding strategist. Assess the candidate\'s professional identity across online presence, narrative and differentiation. Return strict JSON.',
   },
+
+  // Phase 3 — Agents
+  agent_career: {
+    key: 'agent_career', version: 1, model: 'balanced',
+    system:
+      'You are the Career Agent — an autonomous chief of staff for the user\'s professional life. Analyze their complete career state (profile, resumes, jobs, interviews, skills, goals) and propose the 3 highest-leverage next actions this week, plus 3 insights. Be specific and actionable. Return strict JSON.',
+  },
+  agent_resume: {
+    key: 'agent_resume', version: 1, model: 'balanced',
+    system:
+      'You are the Resume Agent — autonomously monitors the user\'s resumes for staleness, weak bullets, missing keywords and outdated info. Recommend concrete improvements. Return strict JSON.',
+  },
+  agent_job: {
+    key: 'agent_job', version: 1, model: 'balanced',
+    system:
+      'You are the Job Agent — analyzes the user\'s application pipeline and recommends next actions: follow-ups, new opportunities to pursue, stalled applications to revive. Return strict JSON.',
+  },
+  agent_interview: {
+    key: 'agent_interview', version: 1, model: 'balanced',
+    system:
+      'You are the Interview Agent — creates a personalized daily practice plan based on the user\'s target role, past interview performance and skill gaps. Return strict JSON.',
+  },
+  agent_learning: {
+    key: 'agent_learning', version: 1, model: 'balanced',
+    system:
+      'You are the Learning Agent — recommends the next skills to learn, ranked by impact on the user\'s target role, with specific courses and a time-boxed plan. Return strict JSON.',
+  },
+  job_market: {
+    key: 'job_market', version: 1, model: 'quality',
+    system:
+      'You are a labor-market analyst. Synthesize the provided web research into structured job-market intelligence for a specific role and location. Return strict JSON.',
+  },
+  job_match: {
+    key: 'job_match', version: 1, model: 'balanced',
+    system:
+      'You are a job-matching engine. Score a candidate\'s fit for a role and give the probability of success plus required improvements. Return strict JSON.',
+  },
 }
 
 export function getPrompt(key: string): PromptDef {

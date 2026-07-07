@@ -3,7 +3,7 @@
 import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
-  Sparkles, Command,
+  Sparkles, Command, Bot, Network, TrendingUp, FileScan, Building2, Zap,
 } from 'lucide-react'
 import { useAppStore, ModuleId } from '@/lib/store'
 import { useApp } from '@/components/app-provider'
@@ -24,6 +24,8 @@ const NAV: { section: string; items: NavItem[] }[] = [
     items: [
       { id: 'dashboard', icon: LayoutDashboard, label: 'dashboard' },
       { id: 'profile', icon: UserCircle2, label: 'profile' },
+      { id: 'agents', icon: Bot, label: 'agents' },
+      { id: 'graph', icon: Network, label: 'graph' },
     ],
   },
   {
@@ -34,6 +36,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { id: 'cover', icon: Mail, label: 'coverLetter' },
       { id: 'portfolio', icon: Globe, label: 'portfolio' },
       { id: 'branding', icon: BadgeCheck, label: 'branding' },
+      { id: 'documents', icon: FileScan, label: 'documents' },
     ],
   },
   {
@@ -46,15 +49,26 @@ const NAV: { section: string; items: NavItem[] }[] = [
     ],
   },
   {
-    section: 'manage',
+    section: 'opportunity',
     items: [
       { id: 'jobs', icon: Briefcase, label: 'jobs' },
+      { id: 'market', icon: TrendingUp, label: 'market' },
+      { id: 'network', icon: Network, label: 'network' },
+      { id: 'mentors', icon: GraduationCap, label: 'mentors' },
+    ],
+  },
+  {
+    section: 'system',
+    items: [
       { id: 'aicenter', icon: Cpu, label: 'aicenter' },
+      { id: 'enterprise', icon: Building2, label: 'enterprise' },
       { id: 'plans', icon: CreditCard, label: 'plans' },
       { id: 'admin', icon: ShieldCheck, label: 'admin' },
     ],
   },
 ]
+
+// Automation is accessible via the AI Agents module + command palette; adding a direct nav entry here would overflow.
 
 export function Sidebar() {
   const { active, set, setPalette } = useAppStore()

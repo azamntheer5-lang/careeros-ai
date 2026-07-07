@@ -17,6 +17,7 @@ model User {
   headline  String?
   role      String   @default("user") // user | admin
   plan      String   @default("free") // free | pro | premium | enterprise
+  tenantId  String?
   onboarded Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -37,6 +38,14 @@ model User {
   contacts        Contact[]
   reminders       Reminder[]
   auditLogs       AuditLog[]
+  agentRuns       AgentRun[]
+  graphNodes      GraphNode[]
+  workflowRuns    WorkflowRun[]
+  networkProfile  NetworkProfile?
+  posts           Post[]
+  mentorProfile   Mentor?
+  bookings        Booking[]   @relation("BookingUser")
+  tenant          Tenant?     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 }
 
 model CareerProfile {
@@ -323,3 +332,218 @@ model FeatureFlag {
   rollout     Int      @default(100) // percentage 0-100
   updatedAt   DateTime @updatedAt
 }
+
+// ---------------------------------------------------------------------------
+// PHASE 3 — Agent Ecosystem, Knowledge Graph, Automation, Network, Marketplace
+// ---------------------------------------------------------------------------
+
+model AgentRun {
+  id         String   @id @default(cuid())
+  userId     String
+  agent      String   // career | resume | job | interview | learning
+  status     String   @default("pending") // pending | running | done | error
+  trigger    String   @default("manual") // manual | workflow | scheduled
+  summary    String?
+  actions    String?  // JSON: [{ type, target, result }]
+  insights   String?  // JSON: string[]
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, agent])
+  @@index([createdAt])
+}
+
+model GraphNode {
+  id         String   @id @default(cuid())
+  userId     String
+  kind       String   // experience | skill | project | education | certificate | goal | job | company | interview | achievement
+  label      String
+  value      String?  // JSON with kind-specific data
+  weight     Int      @default(1)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  edgesFrom  GraphEdge[] @relation("EdgeFrom")
+  edgesTo    GraphEdge[] @relation("EdgeTo")
+  @@index([userId, kind])
+  @@unique([userId, kind, label])
+}
+
+model GraphEdge {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+  rel       String   // uses | worked_at | earned | targets | applied_to | interviewed_at | achieved | requires
+  weight    Int      @default(1)
+  from      GraphNode @relation("EdgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to        GraphNode @relation("EdgeTo", fields: [toId], references: [id], onDelete: Cascade)
+  @@index([fromId])
+  @@index([toId])
+}
+
+model WorkflowRun {
+  id         String   @id @default(cuid())
+  userId     String
+  workflow   String   // new_job_application | new_skill | profile_updated | weekly_review
+  trigger    String   // JSON: { type, payload }
+  status     String   @default("running") // running | done | error
+  steps      String?  // JSON: [{ step, status, result }]
+  result     String?  // JSON summary
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model NetworkProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  slug       String   @unique
+  bio        String?
+  headline   String?
+  tags       String?  // JSON string[]
+  visibility String   @default("public") // public | private
+  followers  Int      @default(0)
+  following  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connections Connection[] @relation("ConnectionFollower")
+  connectionsTo Connection[] @relation("ConnectionFollowee")
+  @@index([slug])
+}
+
+model Connection {
+  id          String   @id @default(cuid())
+  followerId  String
+  followeeId  String
+  createdAt   DateTime @default(now())
+  follower    NetworkProfile @relation("ConnectionFollower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee    NetworkProfile @relation("ConnectionFollowee", fields: [followeeId], references: [id], onDelete: Cascade)
+  @@unique([followerId, followeeId])
+  @@index([followeeId])
+}
+
+model Post {
+  id         String   @id @default(cuid())
+  userId     String
+  type       String   @default("post") // post | achievement | question | opportunity
+  title      String?
+  content    String
+  tags       String?  // JSON string[]
+  likes      Int      @default(0)
+  comments   Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Mentor {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  slug          String   @unique
+  title         String
+  expertise     String?  // JSON string[]
+  industries    String?  // JSON string[]
+  experience    Int?
+  rate          Int      @default(0) // per session in cents
+  currency      String   @default("USD")
+  rating        Float    @default(0)
+  sessions      Int      @default(0)
+  bio           String?
+  availability  String?  // JSON: slots
+  verified      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookings      Booking[] @relation("BookingMentor")
+  @@index([slug])
+}
+
+model Booking {
+  id          String   @id @default(cuid())
+  userId      String
+  mentorId    String
+  type        String   @default("session") // session | resume_review | mock_interview
+  topic       String?
+  scheduledAt DateTime
+  duration    Int      @default(60) // minutes
+  status      String   @default("pending") // pending | confirmed | completed | cancelled
+  price       Int      @default(0)
+  feedback    String?  // JSON: { rating, comment, mentorNotes }
+  createdAt   DateTime @default(now())
+  user        User     @relation("BookingUser", fields: [userId], references: [id], onDelete: Cascade)
+  mentor      Mentor   @relation("BookingMentor", fields: [mentorId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([mentorId])
+  @@index([scheduledAt])
+}
+
+model JobMarketInsight {
+  id         String   @id @default(cuid())
+  userId     String?
+  query      String
+  data       String   // JSON: { trends, salaries, demand, predictions, companies }
+  createdAt  DateTime @default(now())
+  @@index([query])
+  @@index([createdAt])
+}
+
+model Tenant {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // company | university
+  domain      String?
+  plan        String   @default("enterprise")
+  seats       Int      @default(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  members     User[]
+  employees   Employee[]
+  departments Department[]
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  headcount Int      @default(0)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employees Employee[]
+  @@index([tenantId])
+}
+
+model Employee {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String?
+  name         String
+  email        String
+  role         String?
+  departmentId String?
+  level        String?
+  skills       String?  // JSON string[]
+  goals        String?  // JSON string[]
+  growthScore  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  @@index([tenantId])
+  @@index([departmentId])
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  userId     String?
+  type       String   // resume | certificate | portfolio | id | other
+  filename   String
+  mimeType   String
+  data       String   // base64 content or extracted text
+  parsed     String?  // JSON: extracted structured data
+  status     String   @default("pending") // pending | parsed | error
+  createdAt  DateTime @default(now())
+  @@index([userId])
+  @@index([type])
+}
+

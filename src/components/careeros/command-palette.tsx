@@ -9,7 +9,7 @@ import { Command } from 'cmdk'
 import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
-  Search, CornerDownLeft, ArrowUp, ArrowDown,
+  Search, CornerDownLeft, ArrowUp, ArrowDown, Bot, Network, TrendingUp, FileScan, Building2, Zap,
 } from 'lucide-react'
 
 type CmdItem = { id: ModuleId; label: string; hint: string; icon: any; keywords: string[] }
@@ -36,17 +36,25 @@ export function CommandPalette() {
   const items: CmdItem[] = [
     { id: 'dashboard', label: t('dashboard'), hint: 'Overview & analytics', icon: LayoutDashboard, keywords: ['home', 'overview', 'stats'] },
     { id: 'profile', label: t('profile'), hint: 'Your career identity', icon: UserCircle2, keywords: ['identity', 'target', 'goals'] },
+    { id: 'agents', label: t('agents'), hint: 'Autonomous AI career agents', icon: Bot, keywords: ['agent', 'autonomous', 'auto'] },
+    { id: 'graph', label: t('graph'), hint: 'Knowledge graph of your career', icon: Network, keywords: ['graph', 'knowledge', 'connections'] },
+    { id: 'automation', label: 'Automation', hint: 'Workflows & triggers', icon: Zap, keywords: ['workflow', 'automation', 'trigger'] },
     { id: 'resume', label: t('resume'), hint: 'Build & optimize resumes', icon: FileText, keywords: ['cv', 'ats'] },
     { id: 'ats', label: t('ats'), hint: 'Match score vs job', icon: ScanSearch, keywords: ['ats', 'match', 'keywords'] },
     { id: 'cover', label: t('coverLetter'), hint: 'Letters & outreach', icon: Mail, keywords: ['email', 'networking'] },
     { id: 'portfolio', label: t('portfolio'), hint: 'Public portfolio site', icon: Globe, keywords: ['website', 'public', 'qr'] },
     { id: 'branding', label: t('branding'), hint: 'LinkedIn & brand score', icon: BadgeCheck, keywords: ['linkedin', 'brand', 'identity'] },
+    { id: 'documents', label: t('documents'), hint: 'Upload & parse resumes/certs', icon: FileScan, keywords: ['ocr', 'parse', 'upload', 'pdf'] },
     { id: 'interview', label: t('interview'), hint: 'AI interview practice', icon: Mic, keywords: ['practice', 'voice', 'technical'] },
     { id: 'coach', label: t('coach'), hint: '1:1 AI career coach', icon: BrainCircuit, keywords: ['advice', 'strategy'] },
     { id: 'intelligence', label: t('intelligence'), hint: 'Unified career roadmap', icon: Compass, keywords: ['roadmap', 'plan', 'promotion'] },
     { id: 'jobs', label: t('jobs'), hint: 'Application pipeline CRM', icon: Briefcase, keywords: ['applications', 'tracker'] },
     { id: 'skills', label: t('skills'), hint: 'Skill gap analysis', icon: GraduationCap, keywords: ['learning', 'gap'] },
+    { id: 'market', label: t('market'), hint: 'Job market intelligence & matching', icon: TrendingUp, keywords: ['salary', 'trends', 'demand', 'match'] },
+    { id: 'network', label: t('network'), hint: 'Professional social network', icon: Network, keywords: ['social', 'follow', 'community'] },
+    { id: 'mentors', label: t('mentors'), hint: 'Book 1:1 mentor sessions', icon: GraduationCap, keywords: ['mentor', 'coach', 'book', 'session'] },
     { id: 'aicenter', label: t('aicenter'), hint: 'Prompts, models & usage', icon: Cpu, keywords: ['ai', 'tokens', 'cost'] },
+    { id: 'enterprise', label: t('enterprise'), hint: 'Org career development', icon: Building2, keywords: ['company', 'university', 'employees', 'mobility'] },
     { id: 'plans', label: t('plans'), hint: 'Subscription & billing', icon: CreditCard, keywords: ['upgrade', 'invoice'] },
     { id: 'admin', label: t('admin'), hint: 'Platform admin', icon: ShieldCheck, keywords: ['audit', 'flags', 'revenue'] },
   ]
