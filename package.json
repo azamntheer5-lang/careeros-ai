@@ -8,11 +8,11 @@
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint .",
+    "setup": "node scripts/setup.mjs",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
-    "vercel-build": "prisma generate && prisma db push --accept-data-loss && next build"
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",
