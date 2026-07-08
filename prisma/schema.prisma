@@ -1,12 +1,12 @@
-// CareerOS AI — Enterprise schema (Phase 2)
-// SQLite-compatible. Existing models preserved; new models appended.
+// CareerOS AI — Production schema (PostgreSQL)
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

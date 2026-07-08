@@ -1,12 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
-  /* config options here */
+  // Vercel يدير standalone تلقائياً — لا حاجة له في Vercel
+  // output: "standalone",
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+  reactStrictMode: true,
+  experimental: {
+    optimizePackageImports: ["lucide-react", "framer-motion", "recharts"],
+  },
 };
 
 export default nextConfig;
