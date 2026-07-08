@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
-import { getCurrentUser, err } from '@/lib/server'
+import { getCurrentUser, err, clipInput } from '@/lib/server'
 
 export async function GET() {
   try {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Background and target context are required' }, { status: 400 })
     }
 
-    const content = await ai.generateLetter(type || 'cover', ctx, `${company ? `Company: ${company}. ` : ''}${role ? `Role: ${role}. ` : ''}${jobContext}`, tone || 'professional')
+    const content = await ai.generateLetter(type || 'cover', clipInput(ctx, 5000), `${company ? `Company: ${clipInput(company, 200)}. ` : ''}${role ? `Role: ${clipInput(role, 200)}. ` : ''}${clipInput(jobContext, 5000)}`, tone || 'professional')
 
     const letter = await db.coverLetter.create({
       data: {

@@ -23,3 +23,17 @@ export function parseJson<T = unknown>(text: string | null | undefined): T {
 export function err(e: unknown) {
   return Response.json({ error: (e as Error).message }, { status: 500 })
 }
+
+/** Validate and clip a string input to prevent AI cost abuse. */
+export function clipInput(text: string | undefined | null, maxLen: number = 5000): string {
+  if (!text || typeof text !== 'string') return ''
+  return text.slice(0, maxLen)
+}
+
+/** Validate that a required string field is present and non-empty. */
+export function requireField(value: any, name: string): string {
+  if (!value || typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${name} is required`)
+  }
+  return value
+}

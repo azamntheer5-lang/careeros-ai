@@ -166,10 +166,6 @@ export const PROMPTS: Record<string, PromptDef> = {
   },
 }
 
-export function getPrompt(key: string): PromptDef {
-  return PROMPTS[key] ?? { key, version: 1, model: 'balanced', system: 'You are a helpful assistant.' }
-}
-
 /** All prompt keys + versions for the AI Center dashboard. */
 export function listPrompts() {
   return Object.values(PROMPTS).map((p) => ({

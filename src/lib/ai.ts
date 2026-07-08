@@ -91,40 +91,6 @@ export async function completeJson<T = unknown>(
   return { data: parsed, raw, tokens: Math.ceil(cleaned.length / 4) }
 }
 
-/**
- * Streaming completion for chat-style UX. Calls onToken for every chunk.
- */
-export async function completeStream(
-  messages: ChatMessage[],
-  onToken: (delta: string) => void
-): Promise<string> {
-  const zai = await getZai()
-  const completion = await zai.chat.completions.create({
-    messages: messages as any,
-    thinking: { type: 'disabled' },
-    stream: true,
-  } as any)
-
-  let full = ''
-  try {
-    for await (const chunk of completion as any) {
-      const delta = chunk?.choices?.[0]?.delta?.content ?? ''
-      if (delta) {
-        full += delta
-        onToken(delta)
-      }
-    }
-  } catch {
-    // Some SDK versions don't support streaming — fall back to non-stream.
-    if (!full) {
-      const fallback = await complete(messages)
-      onToken(fallback)
-      return fallback
-    }
-  }
-  return full || (await complete(messages))
-}
-
 // ---------------------------------------------------------------------------
 // Domain-specific prompt helpers
 // ---------------------------------------------------------------------------
@@ -142,21 +108,6 @@ export const ai = {
       content: `${mode.toUpperCase()} mode.\nOriginal: "${text}"\nReturn ONLY the rewritten bullet, no preamble.`,
     }
     return complete([sys, user])
-  },
-
-  /** Generate an entire resume draft from raw user context. */
-  async generateResume(context: string) {
-    return completeJson<any>([
-      {
-        role: 'system',
-        content:
-          'You are CareerOS AI, a world-class resume architect. Produce ATS-optimized, recruiter-friendly resume content. Use action verbs, quantify impact, and keep it honest. Return strict JSON.',
-      },
-      {
-        role: 'user',
-        content: `Create a complete resume from this context. Return JSON with shape: { "summary": string, "experience": [{ "title": string, "company": string, "location": string, "startDate": string, "endDate": string, "bullets": string[] }], "education": [{ "degree": string, "school": string, "location": string, "startDate": string, "endDate": string, "details": string }], "skills": string[], "projects": [{ "name": string, "description": string, "link": string }], "certifications": [{ "name": string, "issuer": string, "date": string }] }.\n\nContext: ${context}`,
-      },
-    ])
   },
 
   /** ATS analysis: score resume against a job description. */
@@ -320,11 +271,6 @@ export async function run<T = string>(
   const latencyMs = Date.now() - t0
   await trackUsage(userId, def.key, promptKey, tokens, true, latencyMs)
   return { data, tokens, model: def.model, latencyMs }
-}
-
-/** Tracked wrapper that returns raw text (for chat-style modules). */
-export async function runText(promptKey: string, userId: string, userName: string, caller: ChatMessage[]) {
-  return run<string>(promptKey, userId, userName, caller, { json: false })
 }
 
 export class InsufficientCreditsError extends Error {

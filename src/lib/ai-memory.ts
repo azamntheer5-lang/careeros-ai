@@ -91,22 +91,6 @@ export function memoryBlock(m: CareerProfileMemory, userName: string): string {
   return lines.join('\n')
 }
 
-/** Compose final messages: registry system + memory + caller messages. */
-export function composeMessages(
-  promptKey: string,
-  memory: CareerProfileMemory | null,
-  userName: string,
-  caller: ChatMessage[]
-): ChatMessage[] {
-  const def = getPromptDef(promptKey)
-  const sys: string[] = [def.system]
-  if (memory) {
-    const block = memoryBlock(memory, userName)
-    if (block) sys.push(block)
-  }
-  return [{ role: 'system', content: sys.join('\n\n') }, ...caller]
-}
-
 // local import to avoid cycle
 import { PROMPTS } from '@/lib/prompts'
 function getPromptDef(key: string) {

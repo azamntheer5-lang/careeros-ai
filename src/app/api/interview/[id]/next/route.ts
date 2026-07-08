@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
-import { getCurrentUser, parseJson, err } from '@/lib/server'
+import { getCurrentUser, parseJson, err, clipInput } from '@/lib/server'
 
 /** Ask the AI interviewer for the next question, given the conversation so far. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -21,7 +21,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const lastQuestion = [...history].reverse().find((m) => m.role === 'assistant')
       if (lastQuestion) {
         try {
-          const { data } = await ai.interviewEvaluate(interview.type, interview.role || 'Software Engineer', lastQuestion.content, body.answer)
+          const clippedAnswer = clipInput(body.answer, 5000)
+          const { data } = await ai.interviewEvaluate(interview.type, interview.role || 'Software Engineer', lastQuestion.content, clippedAnswer)
           evaluation = data
         } catch {}
       }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
-import { getCurrentUser, err } from '@/lib/server'
+import { getCurrentUser, err, clipInput } from '@/lib/server'
 
 /** ATS analysis: compare a resume against a job description. */
 export async function POST(req: Request) {
@@ -24,7 +24,11 @@ export async function POST(req: Request) {
       )
     }
 
-    const { data } = await ai.analyzeAts(resumeContent, jobDescription)
+    // Input length limits to prevent AI cost abuse
+    const clippedResume = clipInput(resumeContent, 10000)
+    const clippedJob = clipInput(jobDescription, 10000)
+
+    const { data } = await ai.analyzeAts(clippedResume, clippedJob)
 
     // persist score on the resume if tied to one
     if (resumeId && typeof data.score === 'number') {

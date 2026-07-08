@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ai } from '@/lib/ai'
+import { db } from '@/lib/db'
 import { getCurrentUser, err } from '@/lib/server'
 
 /** AI-enhance a single resume bullet (auth required). */
@@ -19,5 +20,3 @@ export async function POST(req: Request) {
     return err(e)
   }
 }
-
-import { db } from '@/lib/db'
