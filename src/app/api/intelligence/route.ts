@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err, parseJson } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** Shape of a generated career plan (mirrors the prompt contract). */
 type RoadmapPhase = {
@@ -39,6 +40,8 @@ type CareerPlanPayload = {
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const plans = await db.careerPlan.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },

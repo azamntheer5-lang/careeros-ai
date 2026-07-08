@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, parseJson, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** Send a message to the career coach and get a reply (persists history). */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_chat')
+    if (limited) return limited
     const session = await db.coachSession.findUnique({ where: { id } })
     if (!session || session.userId !== user.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

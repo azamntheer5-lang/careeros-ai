@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, err, clipInput } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_chat')
+    if (limited) return limited
     const letters = await db.coverLetter.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },

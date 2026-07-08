@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err, parseJson } from '@/lib/server'
 import ZAI from 'z-ai-web-dev-sdk'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
 async function getZai() {
@@ -45,6 +46,8 @@ type MarketInsightData = {
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_analyze')
+    if (limited) return limited
     const rows = await db.jobMarketInsight.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },

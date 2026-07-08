@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err, parseJson } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 type JobMatch = {
   matchScore: number
@@ -70,6 +71,8 @@ async function buildCandidateContext(userId: string): Promise<string> {
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_analyze')
+    if (limited) return limited
     const { role, company, jobDescription } = await req.json()
     if (!role?.trim() || !jobDescription?.trim()) {
       return NextResponse.json(

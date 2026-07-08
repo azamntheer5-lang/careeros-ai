@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { runWithCredits } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** GET past assessments. */
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const assessments = await db.assessment.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 10 })
     return NextResponse.json({ assessments })
   } catch (e) { return err(e) }

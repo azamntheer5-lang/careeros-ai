@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 import { db } from '@/lib/db'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -61,6 +62,8 @@ async function runVision(prompt: string, dataUrl: string): Promise<unknown | nul
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'tts')
+    if (limited) return limited
     const docs = await db.document.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },

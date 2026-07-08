@@ -5,16 +5,21 @@ import type { User } from '@prisma/client'
  * Get the current authenticated user.
  *
  * AUTHENTICATION FLOW:
- * 1. Tries real session-based auth (cookie → verify signature → lookup session).
- * 2. If no session: in development, falls back to demo mode (first user) so the
- *    app is usable without login. In production, throws 401.
+ * 1. Reads the `careeros_session` HTTP-only cookie.
+ * 2. Verifies the HMAC signature on the session token.
+ * 3. Looks up the user by the session token hash stored in the DB.
+ * 4. Checks session expiry (7 days).
+ * 5. Returns the user.
  *
- * PRODUCTION USAGE:
- * - API routes should call `requireUser()` from `@/lib/auth` instead, which
- *   throws a 401 Response if not authenticated.
- * - This function is kept for backward compatibility with existing routes.
+ * DEVELOPMENT FALLBACK:
+ * In development (NODE_ENV !== 'production'), if no session exists, returns
+ * the first user so the app is usable without login.
  *
- * @returns The authenticated user (never null in dev; may redirect in prod)
+ * PRODUCTION:
+ * If no valid session exists, throws a 401 Response (caught by err() handler).
+ * This ensures unauthenticated requests never reach business logic.
+ *
+ * @returns The authenticated user (never null — throws 401 if unauthenticated in prod)
  */
 export async function getCurrentUser(): Promise<User> {
   // Try real session auth first
@@ -24,23 +29,22 @@ export async function getCurrentUser(): Promise<User> {
     if (authedUser) return authedUser
   } catch {}
 
-  // Demo fallback: only in development
-  if (process.env.NODE_ENV === 'production') {
-    // In production with no session, return the first user as a last-resort
-    // fallback ONLY if the database has users (prevents crashes during setup).
-    // Real deployments should use requireUser() for proper 401 handling.
-    const user = await db.user.findFirst({ orderBy: { createdAt: 'asc' } })
-    if (user) return user
-    throw new Error('No authenticated user and no users in database')
+  // Demo fallback: ONLY in development
+  if (process.env.NODE_ENV !== 'production') {
+    let user = await db.user.findFirst({ orderBy: { createdAt: 'asc' } })
+    if (!user) {
+      user = await db.user.create({
+        data: { email: 'founder@careeros.ai', name: 'Alex Rivera', plan: 'premium' },
+      })
+    }
+    return user
   }
 
-  let user = await db.user.findFirst({ orderBy: { createdAt: 'asc' } })
-  if (!user) {
-    user = await db.user.create({
-      data: { email: 'founder@careeros.ai', name: 'Alex Rivera', plan: 'premium' },
-    })
-  }
-  return user
+  // PRODUCTION: no session = 401 Unauthorized
+  throw new Response(JSON.stringify({ error: 'Unauthorized' }), {
+    status: 401,
+    headers: { 'Content-Type': 'application/json' },
+  })
 }
 
 export function parseJson<T = unknown>(text: string | null | undefined): T {

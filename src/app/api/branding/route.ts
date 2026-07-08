@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err, parseJson } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 // ---------------------------------------------------------------------------
 // Types — mirror the prompt contract for both LinkedIn + Brand Identity.
@@ -54,6 +55,8 @@ type ProfileData = {
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const rows = await db.brandingAnalysis.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },

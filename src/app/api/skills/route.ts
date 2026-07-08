@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** GET past skill analyses. */
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const profiles = await db.skillProfile.findMany({
       where: { userId: user.id },
       orderBy: { updatedAt: 'desc' },

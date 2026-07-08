@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** GET recent briefings. */
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_analyze')
+    if (limited) return limited
     const briefings = await db.careerBriefing.findMany({ where: { userId: user.id }, orderBy: { createdAt: 'desc' }, take: 7 })
     return NextResponse.json({ briefings })
   } catch (e) { return err(e) }

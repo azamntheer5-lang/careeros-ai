@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, parseJson, err, clipInput } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** Ask the AI interviewer for the next question, given the conversation so far. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_chat')
+    if (limited) return limited
     const interview = await db.interview.findUnique({ where: { id } })
     if (!interview || interview.userId !== user.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

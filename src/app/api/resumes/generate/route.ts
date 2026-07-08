@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** AI-generate a complete, profile-aware resume draft from free-form context. */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const { context, title, template, accent, careerMode } = await req.json()
     if (!context?.trim()) {
       return NextResponse.json({ error: 'Context is required' }, { status: 400 })

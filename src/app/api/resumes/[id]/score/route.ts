@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** AI quality score for a resume across impact, clarity, keywords, formatting, quantification. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_generate')
+    if (limited) return limited
     const resume = await db.resume.findUnique({ where: { id } })
     if (!resume || resume.userId !== user.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

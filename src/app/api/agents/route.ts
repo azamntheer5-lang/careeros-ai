@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser, err } from '@/lib/server'
 import { AGENTS, runAgent, AgentId } from '@/lib/agents'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** GET agent run history + agent definitions. */
 export async function GET() {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_analyze')
+    if (limited) return limited
     const runs = await db.agentRun.findMany({
       where: { userId: user.id },
       orderBy: { createdAt: 'desc' },
