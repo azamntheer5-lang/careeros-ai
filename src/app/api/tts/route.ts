@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 import { getCurrentUser } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
 async function getZai() {
@@ -8,10 +9,13 @@ async function getZai() {
   return zaiInstance
 }
 
-/** Text-to-Speech: returns a WAV audio buffer for the given text (auth required). */
+/** Text-to-Speech: returns a WAV audio buffer for the given text (auth + rate limited). */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
+    // Rate limit: 5 TTS requests per minute
+    const limited = rateLimitOr429(user.id, 'tts')
+    if (limited) return limited
     const { text, voice = 'tongtong', speed = 1.0 } = await req.json()
     if (!text?.trim()) return NextResponse.json({ error: 'Text required' }, { status: 400 })
     // Input validation + length limit to prevent abuse

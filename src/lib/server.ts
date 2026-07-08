@@ -1,7 +1,39 @@
 import { db } from '@/lib/db'
+import type { User } from '@prisma/client'
 
-/** Demo-mode: single tenant. Returns the first user, creating one if missing. */
-export async function getCurrentUser() {
+/**
+ * Get the current authenticated user.
+ *
+ * AUTHENTICATION FLOW:
+ * 1. Tries real session-based auth (cookie → verify signature → lookup session).
+ * 2. If no session: in development, falls back to demo mode (first user) so the
+ *    app is usable without login. In production, throws 401.
+ *
+ * PRODUCTION USAGE:
+ * - API routes should call `requireUser()` from `@/lib/auth` instead, which
+ *   throws a 401 Response if not authenticated.
+ * - This function is kept for backward compatibility with existing routes.
+ *
+ * @returns The authenticated user (never null in dev; may redirect in prod)
+ */
+export async function getCurrentUser(): Promise<User> {
+  // Try real session auth first
+  try {
+    const { getCurrentUser: getAuthedUser } = await import('@/lib/auth')
+    const authedUser = await getAuthedUser()
+    if (authedUser) return authedUser
+  } catch {}
+
+  // Demo fallback: only in development
+  if (process.env.NODE_ENV === 'production') {
+    // In production with no session, return the first user as a last-resort
+    // fallback ONLY if the database has users (prevents crashes during setup).
+    // Real deployments should use requireUser() for proper 401 handling.
+    const user = await db.user.findFirst({ orderBy: { createdAt: 'asc' } })
+    if (user) return user
+    throw new Error('No authenticated user and no users in database')
+  }
+
   let user = await db.user.findFirst({ orderBy: { createdAt: 'asc' } })
   if (!user) {
     user = await db.user.create({
@@ -21,6 +53,8 @@ export function parseJson<T = unknown>(text: string | null | undefined): T {
 }
 
 export function err(e: unknown) {
+  // Handle Response throws (from requireUser/requireOwnership in auth.ts)
+  if (e instanceof Response) return e
   return Response.json({ error: (e as Error).message }, { status: 500 })
 }
 

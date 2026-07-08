@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { run } from '@/lib/ai'
 import { getCurrentUser, err, clipInput } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
-/** Context-aware floating assistant — answers career questions with profile memory. */
+/** Context-aware floating assistant — answers career questions with profile memory (rate limited). */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_chat')
+    if (limited) return limited
     const { message, context } = await req.json()
     if (!message?.trim()) return NextResponse.json({ error: 'Message required' }, { status: 400 })
 

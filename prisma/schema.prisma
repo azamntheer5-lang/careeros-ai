@@ -6,24 +6,29 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  // Supports both SQLite (development) and PostgreSQL (production).
+  // For production: set DATABASE_URL=postgresql://... and provider="postgresql"
+  provider = sqlite
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  headline      String?
-  role          String   @default("user") // user | admin | owner | recruiter | creator
-  plan          String   @default("free") // free | starter | professional | career_pro | enterprise
-  tenantId      String?
-  onboarded     Boolean  @default(false)
-  credits       Int      @default(50) // AI credit balance
-  trialEndsAt   DateTime?
-  mfaEnabled    Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  headline        String?
+  passwordHash    String?
+  role            String   @default("user") // user | admin | owner | recruiter | creator
+  plan            String   @default("free") // free | starter | professional | career_pro | enterprise
+  tenantId        String?
+  onboarded       Boolean  @default(false)
+  credits         Int      @default(50) // AI credit balance
+  trialEndsAt     DateTime?
+  mfaEnabled      Boolean  @default(false)
+  sessionToken    String?
+  sessionExpiresAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   resumes         Resume[]
   coverLetters    CoverLetter[]

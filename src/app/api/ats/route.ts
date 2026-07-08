@@ -2,11 +2,14 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, err, clipInput } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
-/** ATS analysis: compare a resume against a job description. */
+/** ATS analysis: compare a resume against a job description (rate limited). */
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()
+    const limited = rateLimitOr429(user.id, 'ai_analyze')
+    if (limited) return limited
     const { resumeId, resumeText, jobDescription } = await req.json()
 
     let resumeContent = resumeText || ''
