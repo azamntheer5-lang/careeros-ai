@@ -22,7 +22,7 @@ export async function GET() {
     const pipeline = jobsByStatus.map((s) => ({ status: s.status, count: s._count }))
 
     // feature usage counts
-    const featureUsage = usages.reduce<Record<string, number>>((acc, u) => {
+    const featureUsage = (usages as any[]).reduce<Record<string, number>>((acc, u) => {
       acc[u.feature] = (acc[u.feature] || 0) + 1
       return acc
     }, {})

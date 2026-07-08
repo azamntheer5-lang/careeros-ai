@@ -23,11 +23,11 @@ export async function GET() {
       ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length)
       : 0
 
-    const byFeatureMap = usage.reduce<Record<string, number>>((acc, u) => {
+    const byFeatureMap = (usage as any[]).reduce<Record<string, number>>((acc, u) => {
       acc[u.feature] = (acc[u.feature] || 0) + 1
       return acc
     }, {})
-    const byModelMap = usage.reduce<Record<string, number>>((acc, u) => {
+    const byModelMap = (usage as any[]).reduce<Record<string, number>>((acc, u) => {
       const m = u.model || 'balanced'
       acc[m] = (acc[m] || 0) + 1
       return acc

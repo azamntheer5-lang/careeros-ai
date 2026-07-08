@@ -5,7 +5,8 @@ import ZAI from 'z-ai-web-dev-sdk'
 
 let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
 
-async function getZai() {
+/** Get the singleton ZAI SDK instance. Exported for reuse by TTS/ASR/search routes. */
+export async function getZai() {
   if (!zaiInstance) {
     zaiInstance = await ZAI.create()
   }
@@ -21,6 +22,28 @@ export type AiResult<T> = {
   data: T
   raw: string
   tokens: number
+}
+
+/**
+ * Sanitize user input before sending to the LLM.
+ * Prevents prompt injection by:
+ * - Removing common injection patterns ("ignore previous instructions", "system:", etc.)
+ * - Limiting length
+ * - Stripping control characters
+ */
+export function sanitizePromptInput(text: string, maxLen: number = 5000): string {
+  if (!text || typeof text !== 'string') return ''
+  // Strip control characters
+  let cleaned = text.replace(/[\x00-\x1F\x7F]/g, '')
+  // Remove common prompt injection patterns (case-insensitive)
+  cleaned = cleaned.replace(/ignore (all |previous )?instructions?/gi, '')
+  cleaned = cleaned.replace(/disregard (all |previous )?instructions?/gi, '')
+  cleaned = cleaned.replace(/you are now (a |an )?/gi, '')
+  cleaned = cleaned.replace(/system:\s*/gi, '')
+  cleaned = cleaned.replace(/\[SYSTEM\]/gi, '')
+  cleaned = cleaned.replace(/\[ADMIN\]/gi, '')
+  // Limit length
+  return cleaned.slice(0, maxLen)
 }
 
 /**

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useAppStore } from '@/lib/store'
@@ -12,34 +13,36 @@ import { CommandPalette } from '@/components/careeros/command-palette'
 import { Onboarding } from '@/components/careeros/onboarding'
 import { AssessmentOnboarding } from '@/components/careeros/assessment-onboarding'
 import { FloatingAssistant } from '@/components/careeros/floating-assistant'
-import { DashboardModule } from '@/components/modules/dashboard'
-import { ProfileModule } from '@/components/modules/profile'
-import { AgentsModule } from '@/components/modules/agents'
-import { GraphModule } from '@/components/modules/graph'
-import { AutomationModule } from '@/components/modules/automation'
-import { ResumeModule } from '@/components/modules/resume'
-import { AtsModule } from '@/components/modules/ats'
-import { CoverModule } from '@/components/modules/cover'
-import { PortfolioModule } from '@/components/modules/portfolio'
-import { BrandingModule } from '@/components/modules/branding'
-import { DocumentsModule } from '@/components/modules/documents'
-import { InterviewModule } from '@/components/modules/interview'
-import { CoachModule } from '@/components/modules/coach'
-import { IntelligenceModule } from '@/components/modules/intelligence'
-import { JobsModule } from '@/components/modules/jobs'
-import { SkillsModule } from '@/components/modules/skills'
-import { MarketModule } from '@/components/modules/market'
-import { NetworkModule } from '@/components/modules/network'
-import { MentorsModule } from '@/components/modules/mentors'
-import { AiCenterModule } from '@/components/modules/aicenter'
-import { EnterpriseModule } from '@/components/modules/enterprise'
-import { PlansModule } from '@/components/modules/plans'
-import { AdminModule } from '@/components/modules/admin'
-import { RecruitModule } from '@/components/modules/recruit'
-import { MarketplaceModule } from '@/components/modules/marketplace'
-import { AnalyticsModule } from '@/components/modules/analytics'
-import { SecurityModule } from '@/components/modules/security'
-import { BriefingModule } from '@/components/modules/briefing'
+
+// Code-split all modules — only load the active module's code
+const DashboardModule = dynamic(() => import('@/components/modules/dashboard').then(m => ({ default: m.DashboardModule })))
+const ProfileModule = dynamic(() => import('@/components/modules/profile').then(m => ({ default: m.ProfileModule })))
+const AgentsModule = dynamic(() => import('@/components/modules/agents').then(m => ({ default: m.AgentsModule })))
+const GraphModule = dynamic(() => import('@/components/modules/graph').then(m => ({ default: m.GraphModule })))
+const AutomationModule = dynamic(() => import('@/components/modules/automation').then(m => ({ default: m.AutomationModule })))
+const ResumeModule = dynamic(() => import('@/components/modules/resume').then(m => ({ default: m.ResumeModule })))
+const AtsModule = dynamic(() => import('@/components/modules/ats').then(m => ({ default: m.AtsModule })))
+const CoverModule = dynamic(() => import('@/components/modules/cover').then(m => ({ default: m.CoverModule })))
+const PortfolioModule = dynamic(() => import('@/components/modules/portfolio').then(m => ({ default: m.PortfolioModule })))
+const BrandingModule = dynamic(() => import('@/components/modules/branding').then(m => ({ default: m.BrandingModule })))
+const DocumentsModule = dynamic(() => import('@/components/modules/documents').then(m => ({ default: m.DocumentsModule })))
+const InterviewModule = dynamic(() => import('@/components/modules/interview').then(m => ({ default: m.InterviewModule })))
+const CoachModule = dynamic(() => import('@/components/modules/coach').then(m => ({ default: m.CoachModule })))
+const IntelligenceModule = dynamic(() => import('@/components/modules/intelligence').then(m => ({ default: m.IntelligenceModule })))
+const JobsModule = dynamic(() => import('@/components/modules/jobs').then(m => ({ default: m.JobsModule })))
+const SkillsModule = dynamic(() => import('@/components/modules/skills').then(m => ({ default: m.SkillsModule })))
+const MarketModule = dynamic(() => import('@/components/modules/market').then(m => ({ default: m.MarketModule })))
+const NetworkModule = dynamic(() => import('@/components/modules/network').then(m => ({ default: m.NetworkModule })))
+const MentorsModule = dynamic(() => import('@/components/modules/mentors').then(m => ({ default: m.MentorsModule })))
+const AiCenterModule = dynamic(() => import('@/components/modules/aicenter').then(m => ({ default: m.AiCenterModule })))
+const EnterpriseModule = dynamic(() => import('@/components/modules/enterprise').then(m => ({ default: m.EnterpriseModule })))
+const PlansModule = dynamic(() => import('@/components/modules/plans').then(m => ({ default: m.PlansModule })))
+const AdminModule = dynamic(() => import('@/components/modules/admin').then(m => ({ default: m.AdminModule })))
+const RecruitModule = dynamic(() => import('@/components/modules/recruit').then(m => ({ default: m.RecruitModule })))
+const MarketplaceModule = dynamic(() => import('@/components/modules/marketplace').then(m => ({ default: m.MarketplaceModule })))
+const AnalyticsModule = dynamic(() => import('@/components/modules/analytics').then(m => ({ default: m.AnalyticsModule })))
+const SecurityModule = dynamic(() => import('@/components/modules/security').then(m => ({ default: m.SecurityModule })))
+const BriefingModule = dynamic(() => import('@/components/modules/briefing').then(m => ({ default: m.BriefingModule })))
 
 type User = { id: string; name: string; plan: string; headline: string }
 

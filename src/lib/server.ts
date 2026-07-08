@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import type { User } from '@prisma/client'
 
 /**
  * Get the current authenticated user.
@@ -21,7 +20,7 @@ import type { User } from '@prisma/client'
  *
  * @returns The authenticated user (never null — throws 401 if unauthenticated in prod)
  */
-export async function getCurrentUser(): Promise<User> {
+export async function getCurrentUser() {
   // Try real session auth first
   try {
     const { getCurrentUser: getAuthedUser } = await import('@/lib/auth')

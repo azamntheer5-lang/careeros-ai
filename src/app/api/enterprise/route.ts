@@ -198,7 +198,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
     }
 
-    const deptMap = new Map(fresh.departments.map((d) => [d.id, d.name]))
+    const deptMap = new Map<string, string>(fresh.departments.map((d: any) => [d.id, d.name] as [string, string]))
     const employees = fresh.employees.map((e) => serializeEmployee(e, deptMap))
 
     // Stats

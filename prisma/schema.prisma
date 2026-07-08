@@ -6,9 +6,7 @@ generator client {
 }
 
 datasource db {
-  // Supports both SQLite (development) and PostgreSQL (production).
-  // For production: set DATABASE_URL=postgresql://... and provider="postgresql"
-  provider = sqlite
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

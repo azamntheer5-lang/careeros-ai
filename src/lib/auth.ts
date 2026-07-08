@@ -155,3 +155,21 @@ export function requireOwnership(resourceUserId: string, user: { id: string }): 
     })
   }
 }
+
+/**
+ * Require a specific role — throws 403 if the user doesn't have it.
+ * Roles: user < admin < owner
+ */
+export function requireRole(user: { role: string }, ...allowedRoles: string[]): void {
+  if (!allowedRoles.includes(user.role)) {
+    throw new Response(JSON.stringify({ error: 'Forbidden — insufficient permissions' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+}
+
+/** Require admin or owner role. */
+export function requireAdmin(user: { role: string }): void {
+  requireRole(user, 'admin', 'owner')
+}

@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
 import { getCurrentUser } from '@/lib/server'
 import { rateLimitOr429 } from '@/lib/rate-limit'
-
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-async function getZai() {
-  if (!zaiInstance) zaiInstance = await ZAI.create()
-  return zaiInstance
-}
+import { getZai } from '@/lib/ai'
 
 /** Text-to-Speech: returns a WAV audio buffer for the given text (auth + rate limited). */
 export async function POST(req: Request) {

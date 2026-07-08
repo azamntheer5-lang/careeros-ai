@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser, err } from '@/lib/server'
-import ZAI from 'z-ai-web-dev-sdk'
-
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-async function getZai() { if (!zaiInstance) zaiInstance = await ZAI.create(); return zaiInstance }
+import { getZai } from '@/lib/ai'
 
 /** List companies + POST to research a company via web search. */
 export async function GET() {

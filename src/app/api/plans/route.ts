@@ -35,7 +35,7 @@ export async function GET() {
     const tokens = usages.reduce((a, b) => a + b.tokens, 0)
     const cost = usages.reduce((a, b) => a + b.cost, 0)
 
-    const byFeatureMap = usages.reduce<
+    const byFeatureMap = (usages as any[]).reduce<
       Record<string, { calls: number; tokens: number; cost: number }>
     >((acc, u) => {
       acc[u.feature] = acc[u.feature] || { calls: 0, tokens: 0, cost: 0 }

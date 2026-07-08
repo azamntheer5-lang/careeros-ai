@@ -1,15 +1,8 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { run } from '@/lib/ai'
+import { run, getZai } from '@/lib/ai'
 import { getCurrentUser, err, parseJson } from '@/lib/server'
-import ZAI from 'z-ai-web-dev-sdk'
 import { rateLimitOr429 } from '@/lib/rate-limit'
-
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-async function getZai() {
-  if (!zaiInstance) zaiInstance = await ZAI.create()
-  return zaiInstance
-}
 
 type SearchHit = {
   title: string

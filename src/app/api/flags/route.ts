@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getCurrentUser, err } from '@/lib/server'
+import { requireAdmin } from '@/lib/auth'
 
 // Default flags seeded on first GET if the table is empty.
 const DEFAULT_FLAGS = [
@@ -61,10 +62,11 @@ export async function GET() {
   }
 }
 
-/** Update a flag's enabled state and/or rollout percentage. */
+/** Update a flag's enabled state and/or rollout percentage. Admin-only. */
 export async function PUT(req: Request) {
   try {
     const user = await getCurrentUser()
+    requireAdmin(user)  // RBAC: only admins can toggle feature flags
     const body = await req.json()
     const key = String(body.key || '')
     if (!key) {
