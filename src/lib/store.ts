@@ -25,6 +25,7 @@ export type ModuleId =
   | 'market'
   | 'documents'
   | 'enterprise'
+  | 'automation'
   | 'recruit'
   | 'marketplace'
   | 'analytics'

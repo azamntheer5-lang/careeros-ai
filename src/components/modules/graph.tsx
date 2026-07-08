@@ -52,7 +52,7 @@ export function GraphModule() {
 
   const selectedNode = graph.nodes.find((n) => n.id === selected)
   const selectedEdges = selected ? graph.edges.filter((e) => e.from === selected || e.to === selected) : []
-  const connectedIds = new Set([selected, ...selectedEdges.flatMap((e) => [e.from, e.to])])
+  const connectedIds = new Set<string | undefined>([selected ?? undefined, ...selectedEdges.flatMap((e) => [e.from, e.to])])
 
   return (
     <div>
@@ -147,7 +147,7 @@ export function GraphModule() {
 }
 
 /** Radial SVG graph visualization. */
-function GraphView({ graph, selected, onSelect, connectedIds }: { graph: GraphData; selected: string | null; onSelect: (id: string) => void; connectedIds: Set<string | undefined> }) {
+function GraphView({ graph, selected, onSelect, connectedIds }: { graph: GraphData; selected: string | null; onSelect: (id: string | null) => void; connectedIds: Set<string | undefined> }) {
   const W = 760, H = 520, CX = W / 2, CY = H / 2
   const nodes = graph.nodes
   // Position: goal at center, others in concentric rings by kind

@@ -7,9 +7,15 @@ import { PLANS, getPlan, PlanId } from '@/lib/billing'
 export async function GET() {
   try {
     const user = await getCurrentUser()
-    let sub = await db.subscription.findUnique({ where: { userId: user.id }, include: { invoices: { orderBy: { createdAt: 'desc' }, take: 12 } } })
+    let sub = await db.subscription.findUnique({
+      where: { userId: user.id },
+      include: { invoices: { orderBy: { createdAt: 'desc' }, take: 12 } },
+    })
     if (!sub) {
-      sub = await db.subscription.create({ data: { userId: user.id, plan: user.plan as PlanId, status: 'active' } })
+      sub = await db.subscription.create({
+        data: { userId: user.id, plan: user.plan as PlanId, status: 'active' },
+        include: { invoices: true },
+      })
     }
     return NextResponse.json({
       subscription: sub,

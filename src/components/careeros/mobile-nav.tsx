@@ -49,7 +49,7 @@ export function MobileNav() {
           <Menu className="h-5 w-5" />
         </button>
       </SheetTrigger>
-      <SheetContent side="start" className="w-72 p-0">
+      <SheetContent side="left" className="w-72 p-0">
         <SheetHeader className="px-5 py-4 border-b">
           <div className="flex items-center gap-2.5">
             <Logo size={28} />

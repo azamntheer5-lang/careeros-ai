@@ -19,9 +19,13 @@ export async function api<T = unknown>(
     }
   }
   if (!res.ok) {
-    const msg =
-      (data && typeof data === 'object' && 'error' in data && String((data as any).error)) ||
-      `Request failed (${res.status})`
+    let msg = `Request failed (${res.status})`
+    if (data && typeof data === 'object' && 'error' in data) {
+      const errVal = (data as any).error
+      msg = typeof errVal === 'string' ? errVal : typeof errVal === 'object' && errVal?.message ? String(errVal.message) : msg
+    } else if (typeof data === 'string') {
+      msg = data
+    }
     throw new Error(msg)
   }
   return data as T

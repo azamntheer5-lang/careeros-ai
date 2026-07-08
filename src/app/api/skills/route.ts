@@ -3,6 +3,18 @@ import { db } from '@/lib/db'
 import { ai } from '@/lib/ai'
 import { getCurrentUser, err } from '@/lib/server'
 
+/** GET past skill analyses. */
+export async function GET() {
+  try {
+    const user = await getCurrentUser()
+    const profiles = await db.skillProfile.findMany({
+      where: { userId: user.id },
+      orderBy: { updatedAt: 'desc' },
+    })
+    return NextResponse.json({ profiles })
+  } catch (e) { return err(e) }
+}
+
 export async function POST(req: Request) {
   try {
     const user = await getCurrentUser()

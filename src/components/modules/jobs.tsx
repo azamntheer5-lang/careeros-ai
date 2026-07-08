@@ -113,7 +113,7 @@ export function JobsModule() {
                     <div className="flex items-center justify-between px-3 py-2.5 border-b">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
-                        <span className="text-xs font-semibold">{t(col as any)}</span>
+                        <span className="text-xs font-semibold">{t((col === 'interview' ? 'interviewStage' : col) as any)}</span>
                       </div>
                       <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">{items.length}</Badge>
                     </div>
@@ -144,7 +144,7 @@ export function JobsModule() {
               <div><Label className="text-xs text-muted-foreground">{t('company')}</Label><Input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} className="mt-1" /></div>
               <div><Label className="text-xs text-muted-foreground">{t('role')}</Label><Input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="mt-1" /></div>
               <div><Label className="text-xs text-muted-foreground">{t('location')}</Label><Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="mt-1" /></div>
-              <div><Label className="text-xs text-muted-foreground">{t('salary')}</Label><Input value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} placeholder="$180k" className="mt-1" /></div>
+              <div><Label className="text-xs text-muted-foreground">{t('salaryField')}</Label><Input value={form.salary} onChange={(e) => setForm({ ...form, salary: e.target.value })} placeholder="$180k" className="mt-1" /></div>
               <div><Label className="text-xs text-muted-foreground">URL</Label><Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} className="mt-1" /></div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t('priority')}</Label>

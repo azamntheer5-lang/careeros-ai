@@ -21,9 +21,9 @@ import ReactMarkdown from 'react-markdown'
 const FOCUSES = [
   { id: 'career-planning', label: 'careerPlanning' },
   { id: 'promotion', label: 'promotion' },
-  { id: 'salary', label: 'salary' },
+  { id: 'salary', label: 'salaryAdvice' },
   { id: 'skills', label: 'skillsFocus' },
-  { id: 'industry', label: 'industry' },
+  { id: 'industry', label: 'industryInsights' },
   { id: 'pivot', label: 'pivot' },
 ] as const
 

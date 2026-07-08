@@ -286,7 +286,7 @@ function ResumeEditor({ data, onChange }: { data: ResumeData; onChange: (p: Part
       <Card>
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold flex items-center gap-2"><Award className="h-4 w-4 text-brand" /> {t('skills')}</h3>
+            <h3 className="text-sm font-semibold flex items-center gap-2"><Award className="h-4 w-4 text-brand" /> {t('skillsLabel')}</h3>
           </div>
           <div className="flex flex-wrap gap-2 mb-2">
             {data.skills.map((s, i) => (

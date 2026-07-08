@@ -144,10 +144,10 @@ async function executeStep(step: WorkflowStep, userId: string, userName: string,
       return { count: resumes.length, message: 'Resumes flagged for re-scoring' }
     }
     case 'run_all_agents': {
-      const results = []
+      const results: { agent: string; summary: string }[] = []
       for (const a of ['career', 'resume', 'job', 'interview', 'learning'] as const) {
         const r = await runAgent(a, userId, 'workflow').catch(() => null)
-        if (r) results.push({ agent: a, summary: r.summary })
+        if (r) results.push({ agent: a, summary: r.summary || '' })
       }
       return { agents: results }
     }
