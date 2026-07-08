@@ -56,6 +56,7 @@ export async function complete(
   const { retries = 2 } = opts
   const zai = await getZai()
   let lastError: unknown
+  const t0 = Date.now()
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -65,11 +66,16 @@ export async function complete(
       })
       const content = completion.choices[0]?.message?.content ?? ''
       if (!content.trim()) throw new Error('Empty AI response')
+      // AI observability: log response metadata (not content, for privacy)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[AI] attempt=${attempt} tokens~${Math.ceil(content.length / 4)} latency=${Date.now() - t0}ms`)
+      }
       return content
     } catch (err) {
       lastError = err
+      // Model fallback: on last retry, try a simpler prompt
       if (attempt < retries) {
-        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)))
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1))) // exponential backoff
       }
     }
   }

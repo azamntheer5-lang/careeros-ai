@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, createSession } from '@/lib/auth'
+import { verifyPassword, createSession, recordFailedAttempt, isLockedOut, clearFailedAttempts } from '@/lib/auth'
 import { err } from '@/lib/server'
 import { checkRateLimit } from '@/lib/rate-limit'
 
@@ -17,15 +17,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
     }
 
-    const user = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } })
+    const normalizedEmail = email.toLowerCase().trim()
+
+    // Check account lockout
+    if (isLockedOut(normalizedEmail)) {
+      return NextResponse.json({ error: 'Account locked due to too many failed attempts. Try again in 15 minutes.' }, { status: 423 })
+    }
+
+    const user = await db.user.findUnique({ where: { email: normalizedEmail } })
     if (!user || !user.passwordHash) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+      const { remaining } = recordFailedAttempt(normalizedEmail)
+      return NextResponse.json({ error: `Invalid email or password. ${remaining} attempts remaining.` }, { status: 401 })
     }
 
     if (!verifyPassword(password, user.passwordHash)) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
+      const { remaining, locked } = recordFailedAttempt(normalizedEmail)
+      if (locked) {
+        return NextResponse.json({ error: 'Account locked due to too many failed attempts. Try again in 15 minutes.' }, { status: 423 })
+      }
+      return NextResponse.json({ error: `Invalid email or password. ${remaining} attempts remaining.` }, { status: 401 })
     }
 
+    // Successful login — clear failed attempts
+    clearFailedAttempts(normalizedEmail)
     await createSession(user.id)
 
     return NextResponse.json({

@@ -173,3 +173,56 @@ export function requireRole(user: { role: string }, ...allowedRoles: string[]): 
 export function requireAdmin(user: { role: string }): void {
   requireRole(user, 'admin', 'owner')
 }
+
+// Account lockout tracking (in-memory; production: use Redis)
+const loginAttempts = new Map<string, { count: number; lockedUntil: number }>()
+const MAX_ATTEMPTS = 5
+const LOCKOUT_DURATION = 15 * 60 * 1000 // 15 minutes
+
+/** Record a failed login attempt. Locks account after MAX_ATTEMPTS. */
+export function recordFailedAttempt(identifier: string): { locked: boolean; remaining: number } {
+  const record = loginAttempts.get(identifier) || { count: 0, lockedUntil: 0 }
+  record.count++
+  if (record.count >= MAX_ATTEMPTS) {
+    record.lockedUntil = Date.now() + LOCKOUT_DURATION
+  }
+  loginAttempts.set(identifier, record)
+  return {
+    locked: record.count >= MAX_ATTEMPTS,
+    remaining: Math.max(0, MAX_ATTEMPTS - record.count),
+  }
+}
+
+/** Check if an identifier is currently locked out. */
+export function isLockedOut(identifier: string): boolean {
+  const record = loginAttempts.get(identifier)
+  if (!record) return false
+  if (record.lockedUntil > Date.now()) return true
+  if (record.lockedUntil > 0 && record.lockedUntil <= Date.now()) {
+    // Lockout expired — reset
+    loginAttempts.delete(identifier)
+    return false
+  }
+  return false
+}
+
+/** Clear failed attempts after successful login. */
+export function clearFailedAttempts(identifier: string): void {
+  loginAttempts.delete(identifier)
+}
+
+/**
+ * Generate a password reset token (expires in 1 hour).
+ * In production, email this token to the user.
+ */
+export function generateResetToken(userId: string): { token: string; expiresAt: Date } {
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+  return { token, expiresAt }
+}
+
+/** Verify a password reset token (placeholder — production: store in DB). */
+export function verifyResetToken(token: string): boolean {
+  // In production: look up token in DB, check expiry, mark as used
+  return token.length === 64 // Basic format validation
+}
