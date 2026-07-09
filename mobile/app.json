@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "CareerOS AI",
+    "slug": "careeros-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "careeros",
+    "userInterfaceStyle": "automatic",
+    "android": {
+      "package": "com.careeros.ai",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0f1a"
+      },
+      "permissions": ["INTERNET"]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "careeros-ai"
+      }
+    }
+  }
+}
