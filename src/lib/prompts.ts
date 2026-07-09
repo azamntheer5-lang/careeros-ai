@@ -164,6 +164,23 @@ export const PROMPTS: Record<string, PromptDef> = {
     system:
       'You are an AI Recruiter Assistant for employers. Analyze candidate applications against a job posting, score fit, flag risks, and recommend interview focus areas. Return strict JSON.',
   },
+
+  // Desktop — Enhanced AI Resume Pipeline
+  resume_parse: {
+    key: 'resume_parse', version: 1, model: 'quality', temperature: 0.2,
+    system:
+      'You are a resume parsing engine. Extract structured data from messy, unformatted text. Return ONLY factual information present in the text. If a field is missing, set it to null — NEVER invent data. Return strict JSON.',
+  },
+  resume_ats_optimize: {
+    key: 'resume_ats_optimize', version: 1, model: 'quality', temperature: 0.3,
+    system:
+      'You are an ATS optimization engine. Given a structured resume profile and a target job description, rewrite the resume content to maximize ATS compatibility while keeping ALL facts accurate. Never invent metrics, skills, or experiences. If information is missing, flag it in a "missingInfo" array. Return strict JSON.',
+  },
+  resume_missing_info: {
+    key: 'resume_missing_info', version: 1, model: 'fast',
+    system:
+      'You are a career assistant. Given a resume profile and a target role, identify what critical information is missing that the user should provide. Be specific and actionable. Return strict JSON.',
+  },
 }
 
 /** All prompt keys + versions for the AI Center dashboard. */
