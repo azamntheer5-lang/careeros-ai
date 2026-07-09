@@ -10,7 +10,7 @@ import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
   Search, CornerDownLeft, ArrowUp, ArrowDown, Bot, Network, TrendingUp, FileScan, Building2, Zap,
-  Sun, ShoppingBag, BarChart3, Shield,
+  Sun, ShoppingBag, BarChart3, Shield, Wand2,
 } from 'lucide-react'
 
 type CmdItem = { id: ModuleId; label: string; hint: string; icon: any; keywords: string[] }
@@ -41,6 +41,7 @@ export function CommandPalette() {
     { id: 'graph', label: t('graph'), hint: 'Knowledge graph of your career', icon: Network, keywords: ['graph', 'knowledge', 'connections'] },
     { id: 'automation', label: 'Automation', hint: 'Workflows & triggers', icon: Zap, keywords: ['workflow', 'automation', 'trigger'] },
     { id: 'resume', label: t('resume'), hint: 'Build & optimize resumes', icon: FileText, keywords: ['cv', 'ats'] },
+    { id: 'studio', label: t('studio'), hint: 'AI Resume Studio — generate from raw text', icon: Wand2, keywords: ['generate', 'raw text', 'parse', 'ocr', 'whatsapp', 'bilingual', 'studio'] },
     { id: 'ats', label: t('ats'), hint: 'Match score vs job', icon: ScanSearch, keywords: ['ats', 'match', 'keywords'] },
     { id: 'cover', label: t('coverLetter'), hint: 'Letters & outreach', icon: Mail, keywords: ['email', 'networking'] },
     { id: 'portfolio', label: t('portfolio'), hint: 'Public portfolio site', icon: Globe, keywords: ['website', 'public', 'qr'] },

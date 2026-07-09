@@ -3,7 +3,7 @@
 import {
   LayoutDashboard, UserCircle2, FileText, ScanSearch, Mail, Globe, BadgeCheck,
   Mic, BrainCircuit, Compass, Briefcase, GraduationCap, Cpu, CreditCard, ShieldCheck,
-  Sparkles, Command, Bot, Network, TrendingUp, FileScan, Building2, Zap, Sun, ShoppingBag, BarChart3, Shield, Coins,
+  Sparkles, Command, Bot, Network, TrendingUp, FileScan, Building2, Zap, Sun, ShoppingBag, BarChart3, Shield, Coins, Wand2,
 } from 'lucide-react'
 import { useAppStore, ModuleId } from '@/lib/store'
 import { useApp } from '@/components/app-provider'
@@ -32,6 +32,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
     section: 'build',
     items: [
       { id: 'resume', icon: FileText, label: 'resume' },
+      { id: 'studio', icon: Wand2, label: 'studio' },
       { id: 'ats', icon: ScanSearch, label: 'ats' },
       { id: 'cover', icon: Mail, label: 'coverLetter' },
       { id: 'portfolio', icon: Globe, label: 'portfolio' },

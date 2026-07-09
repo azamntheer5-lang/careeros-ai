@@ -31,6 +31,7 @@ export type ModuleId =
   | 'analytics'
   | 'security'
   | 'briefing'
+  | 'studio'
 
 type AppState = {
   active: ModuleId

@@ -43,6 +43,7 @@ const MarketplaceModule = dynamic(() => import('@/components/modules/marketplace
 const AnalyticsModule = dynamic(() => import('@/components/modules/analytics').then(m => ({ default: m.AnalyticsModule })))
 const SecurityModule = dynamic(() => import('@/components/modules/security').then(m => ({ default: m.SecurityModule })))
 const BriefingModule = dynamic(() => import('@/components/modules/briefing').then(m => ({ default: m.BriefingModule })))
+const ResumeStudioModule = dynamic(() => import('@/components/modules/resume-studio').then(m => ({ default: m.ResumeStudioModule })))
 
 type User = { id: string; name: string; plan: string; headline: string }
 
@@ -110,6 +111,7 @@ export default function Page() {
                   {active === 'analytics' && <AnalyticsModule />}
                   {active === 'security' && <SecurityModule />}
                   {active === 'briefing' && <BriefingModule />}
+                  {active === 'studio' && <ResumeStudioModule />}
                   {active === 'admin' && <AdminModule />}
                 </motion.div>
               </AnimatePresence>

@@ -262,6 +262,10 @@ export const dict = {
     dataExport: 'Export My Data',
     dataDeletion: 'Delete My Account',
     privacyControls: 'Privacy Controls',
+    // Resume Studio
+    studio: 'Resume Studio',
+    studioTitle: 'AI Resume Studio',
+    studioSub: 'Transform messy text into a professional, ATS-optimized resume in seconds.',
     // footer
     footerNote: 'CareerOS AI · Built for ambitious professionals.',
     allRightsReserved: 'All rights reserved.',
@@ -514,6 +518,10 @@ export const dict = {
     dataExport: 'تصدير بياناتي',
     dataDeletion: 'حذف حسابي',
     privacyControls: 'ضوابط الخصوصية',
+    // Resume Studio
+    studio: 'استوديو السيرة الذاتية',
+    studioTitle: 'استوديو السيرة الذاتية بالذكاء',
+    studioSub: 'حوّل النصوص المبعثرة إلى سيرة ذاتية احترافية متوافقة مع أنظمة التتبع في ثوانٍ.',
     footerNote: 'كاريير أو إس · صُمم للمحترفين الطموحين.',
     allRightsReserved: 'جميع الحقوق محفوظة.',
   },
