@@ -1,29 +1,48 @@
 import { run, sanitizePromptInput } from './ai'
-import { getCurrentUser } from './server'
 
 /**
- * Enhanced AI Resume Pipeline — v2
+ * AI Resume Pipeline V3 — Intelligent Analysis + Industry Awareness
  *
- * Designed to handle the messiest inputs:
- * - WhatsApp document exports
- * - OCR text with broken lines
- * - Mixed Arabic + English
- * - Duplicated content (same info in two languages)
- * - Incomplete resumes
- * - Very short descriptions
- * - Random paragraphs with no structure
+ * 15-stage analysis before generation:
+ * 1. Language detection
+ * 2. Profession detection
+ * 3. Seniority detection
+ * 4. Industry detection
+ * 5. Missing info detection
+ * 6. Duplicate detection
+ * 7. Weak wording detection
+ * 8. Achievement detection
+ * 9. Technical skills detection
+ * 10. Soft skills detection
+ * 11. Certification detection
+ * 12. Project detection
+ * 13. Measurable accomplishments detection
+ * 14. ATS keyword detection
+ * 15. Writing problem detection
  *
- * Pipeline:
- * 1. DECODE: Detect language(s), decode URL encoding, fix broken lines
- * 2. PARSE: Extract structured data from messy text (bilingual aware)
- * 3. DEDUPLICATE: Remove Arabic/English duplicate content
- * 4. ENRICH: Professionally expand limited information (never invent facts)
- * 5. ATS OPTIMIZE: Rewrite for ATS compatibility
- * 6. SCORE: Resume quality + ATS score + completeness meter
- * 7. MISSING INFO: Identify what's missing and generate questions
+ * Then: grammar fix → industry-aware enrichment → ATS optimize → quality check → score
  */
 
 // ─── Types ─────────────────────────────────────────────────────────
+
+export type IntelligentAnalysis = {
+  language: string
+  profession: string
+  seniority: string
+  industry: string
+  missingInfo: string[]
+  duplicatedInfo: string[]
+  weakWording: string[]
+  achievements: string[]
+  technicalSkills: string[]
+  softSkills: string[]
+  certifications: string[]
+  projects: string[]
+  measurableAccomplishments: string[]
+  atsKeywords: string[]
+  writingProblems: string[]
+  confidence: number
+}
 
 export type BilingualResume = {
   contact: {
@@ -34,6 +53,8 @@ export type BilingualResume = {
     location: string | null
     linkedin: string | null
     website: string | null
+    nationality: string | null
+    github: string | null
   }
   objective: string | null
   objectiveAr: string | null
@@ -52,11 +73,23 @@ export type BilingualResume = {
     startDate: string | null
     endDate: string | null
     details: string | null
+    gpa: string | null
   }[]
-  skills: { technical: string[]; soft: string[]; languages: { language: string; level: string }[] }
+  skills: {
+    technical: string[]
+    soft: string[]
+    languages: { language: string; level: string }[]
+    tools: string[]
+    frameworks: string[]
+    certifications: { name: string; issuer: string | null; date: string | null }[]
+  }
   courses: { name: string; provider: string | null; hours: string | null; date: string | null }[]
-  certifications: { name: string; issuer: string | null; date: string | null }[]
-  projects: { name: string; description: string; link: string | null }[]
+  projects: { name: string; description: string; link: string | null; technologies: string[] }[]
+  volunteer: { role: string; organization: string; description: string }[]
+  awards: { name: string; issuer: string; date: string | null }[]
+  publications: { title: string; publisher: string; date: string | null }[]
+  interests: string[]
+  references: string | null
 }
 
 export type ResumeScore = {
@@ -65,9 +98,15 @@ export type ResumeScore = {
   completeness: number
   keywordScore: number
   formattingScore: number
+  grammarScore: number
+  impactScore: number
   dimensions: { name: string; score: number; status: 'good' | 'warning' | 'bad' }[]
   quickWins: string[]
   missingCritical: string[]
+  weakPhrases: string[]
+  strongPhrases: string[]
+  repeatedWords: string[]
+  formattingIssues: string[]
 }
 
 export type MissingInfo = {
@@ -85,199 +124,227 @@ export type KeywordAnalysis = {
   missingActionVerbs: string[]
 }
 
-export type PipelineResultV2 = {
+export type QualityReport = {
+  hallucinations: string[]
+  genericLanguage: string[]
+  missingActionVerbs: string[]
+  weakBullets: string[]
+  atsIssues: string[]
+  repeatedPhrases: string[]
+  inconsistentFormatting: string[]
+  passedChecks: string[]
+  qualityScore: number
+}
+
+export type PipelineResultV3 = {
+  analysis: IntelligentAnalysis
   resume: BilingualResume
   score: ResumeScore
   missingInfo: MissingInfo
   keywords: KeywordAnalysis
+  quality: QualityReport
   warnings: string[]
   enrichmentNotes: string[]
   detectedLanguage: string
+  profession: string
+  seniority: string
+  industry: string
   wasEnriched: boolean
+  wasGrammarFixed: boolean
+  tokensUsed: number
+  latencyMs: number
 }
 
 // ─── Pipeline Steps ────────────────────────────────────────────────
 
-/**
- * Pre-process raw text: fix common OCR/WhatsApp export issues.
- */
-function preprocessText(raw: string): string {
+/** Preprocess raw text: fix OCR/WhatsApp issues. Exported for testing. */
+export function preprocessText(raw: string): string {
   let text = raw
-
-  // Decode URL encoding if detected
+  // URL decode
   if (text.includes('%0D') || text.includes('%0A') || text.includes('%20')) {
     try { text = decodeURIComponent(text) } catch {}
   }
-
-  // Replace + with space (URL encoding artifact)
   text = text.replace(/\+/g, ' ')
-
-  // Fix broken lines: "Taibah\n\nUniversity" → "Taibah University"
+  // Fix broken lines
   text = text.replace(/(\w)\n\n(\w)/g, '$1 $2')
-
-  // Fix pipe-separated content: "Academy |" → "Academy"
-  text = text.replace(/\s*\|\s*/g, ' | ')
-
-  // Remove WhatsApp document headers
+  // Remove WhatsApp headers
   text = text.replace(/^DOC-\d+.*?\./m, '')
-
-  // Normalize excessive blank lines
+  // Remove email signatures
+  text = text.replace(/--\s*\n.*?(?:Sent from|Get Outlook).*$/gm, '')
+  // Normalize blank lines
   text = text.replace(/\n{3,}/g, '\n\n')
-
-  // Trim
   return text.trim()
 }
 
 /**
- * Step 1-2: Parse messy bilingual text into structured resume.
- * Handles mixed Arabic/English, duplicated content, broken formatting.
+ * Stage 1: Intelligent 15-stage analysis.
+ * Runs before any generation to understand the input deeply.
  */
-async function parseBilingualResume(rawText: string): Promise<{ resume: BilingualResume; warnings: string[]; detectedLanguage: string }> {
+async function runIntelligentAnalysis(rawText: string): Promise<IntelligentAnalysis> {
   const cleaned = preprocessText(rawText)
-  const warnings: string[] = []
-
-  // Detect languages
-  const hasArabic = /[\u0600-\u06FF]/.test(cleaned)
-  const hasEnglish = /[a-zA-Z]/.test(cleaned)
-  const detectedLanguage = hasArabic && hasEnglish ? 'bilingual' : hasArabic ? 'ar' : 'en'
-
-  if (hasArabic && hasEnglish) {
-    warnings.push('Bilingual content detected (Arabic + English) — will parse both and deduplicate')
-  }
-
-  const { data: resume } = await run<BilingualResume>(
-    'resume_parse_bilingual',
+  const { data, tokens } = await run<IntelligentAnalysis>(
+    'resume_intelligent_analysis',
     '', '',
     [{
       role: 'user',
-      content: `Parse this resume text into a structured JSON profile. This text may be:
-- Mixed Arabic and English (bilingual)
-- From a WhatsApp document export or OCR scan
-- Duplicated (same info in both languages)
-- Messy with broken lines
+      content: `Perform a comprehensive 15-stage analysis of this resume text. Be thorough and specific.
 
-Rules:
-- Extract ALL information present in the text
-- If content appears in both Arabic and English, keep BOTH versions (name + nameAr, objective + objectiveAr, degree + degreeAr)
-- For experience/education/courses, if the text only has Arabic, fill the main fields; if both, prefer English for main fields
-- NEVER invent information — if something is missing, set it to null
-- Separate technical skills from soft skills
-- Extract languages with proficiency levels
-- Extract courses with provider, hours, and dates if available
-- Fix obvious OCR errors (broken words across lines)
-
-Text to parse:
+Text:
 ${sanitizePromptInput(cleaned, 15000)}
 
 Return JSON:
 {
-  "contact": { "name": string|null, "nameAr": string|null, "email": string|null, "phone": string|null, "location": string|null, "linkedin": string|null, "website": string|null },
+  "language": "en" | "ar" | "bilingual",
+  "profession": string (e.g., "Cybersecurity Specialist", "Software Engineer", "Marketing Manager"),
+  "seniority": "student" | "fresh graduate" | "junior" | "mid" | "senior" | "lead" | "executive",
+  "industry": string (e.g., "Technology", "Finance", "Healthcare"),
+  "missingInfo": string[] (critical missing fields),
+  "duplicatedInfo": string[] (content appearing in multiple languages or repeated),
+  "weakWording": string[] (specific examples of passive/vague language),
+  "achievements": string[] (any measurable accomplishments found),
+  "technicalSkills": string[],
+  "softSkills": string[],
+  "certifications": string[],
+  "projects": string[],
+  "measurableAccomplishments": string[] (numbers, percentages, metrics),
+  "atsKeywords": string[] (industry-standard terms present),
+  "writingProblems": string[] (grammar, spelling, OCR errors, broken sentences),
+  "confidence": number (0-100, how confident you are in the analysis)
+}`,
+    }],
+    { json: true }
+  )
+  return data
+}
+
+/**
+ * Stage 2: Parse + grammar fix + industry-aware enrichment in one pass.
+ * Uses the analysis to inform profession-specific writing style.
+ */
+async function parseAndEnrich(
+  rawText: string,
+  analysis: IntelligentAnalysis,
+  jobDescription?: string
+): Promise<{ resume: BilingualResume; notes: string[]; grammarFixed: boolean }> {
+  const cleaned = preprocessText(rawText)
+  const notes: string[] = []
+
+  const { data: resume } = await run<BilingualResume>(
+    'resume_industry_aware',
+    '', '',
+    [{
+      role: 'user',
+      content: `Generate a professional resume from this raw text.
+
+PRE-ANALYSIS (use this to inform your writing style):
+- Profession: ${analysis.profession}
+- Seniority: ${analysis.seniority}
+- Industry: ${analysis.industry}
+- Language: ${analysis.language}
+- Weak wording found: ${analysis.weakWording.join(', ') || 'none'}
+- Writing problems: ${analysis.writingProblems.join(', ') || 'none'}
+- Duplicated content: ${analysis.duplicatedInfo.join(', ') || 'none'}
+${jobDescription ? `- Target job description keywords: use for ATS optimization` : ''}
+
+INSTRUCTIONS:
+1. Extract ALL information from the text
+2. Fix ALL grammar, spelling, punctuation, OCR errors, WhatsApp formatting
+3. Rewrite weak bullet points with strong action verbs
+4. Convert descriptions into achievements ONLY when the source supports it
+5. Adapt writing style for the detected profession (${analysis.profession})
+6. If bilingual (AR+EN), keep both versions where available
+7. NEVER invent facts — set missing fields to null
+8. Use "approx." for any estimated metrics
+9. Separate technical skills from soft skills
+10. Extract tools, frameworks separately if mentioned
+11. Extract volunteer work, awards, publications, interests if present
+
+Raw text:
+${sanitizePromptInput(cleaned, 15000)}
+
+${jobDescription ? `Job description:\n${sanitizePromptInput(jobDescription, 5000)}` : ''}
+
+Return JSON:
+{
+  "contact": { "name": string|null, "nameAr": string|null, "email": string|null, "phone": string|null, "location": string|null, "linkedin": string|null, "website": string|null, "nationality": string|null, "github": string|null },
   "objective": string|null,
   "objectiveAr": string|null,
   "experience": [{ "title": string|null, "company": string|null, "location": string|null, "startDate": string|null, "endDate": string|null, "bullets": string[] }],
-  "education": [{ "degree": string|null, "degreeAr": string|null, "school": string|null, "startDate": string|null, "endDate": string|null, "details": string|null }],
-  "skills": { "technical": string[], "soft": string[], "languages": [{ "language": string, "level": string }] },
+  "education": [{ "degree": string|null, "degreeAr": string|null, "school": string|null, "startDate": string|null, "endDate": string|null, "details": string|null, "gpa": string|null }],
+  "skills": { "technical": string[], "soft": string[], "languages": [{ "language": string, "level": string }], "tools": string[], "frameworks": string[], "certifications": [{ "name": string, "issuer": string|null, "date": string|null }] },
   "courses": [{ "name": string, "provider": string|null, "hours": string|null, "date": string|null }],
-  "certifications": [{ "name": string, "issuer": string|null, "date": string|null }],
-  "projects": [{ "name": string, "description": string, "link": string|null }]
+  "projects": [{ "name": string, "description": string, "link": string|null, "technologies": string[] }],
+  "volunteer": [{ "role": string, "organization": string, "description": string }],
+  "awards": [{ "name": string, "issuer": string, "date": string|null }],
+  "publications": [{ "title": string, "publisher": string, "date": string|null }],
+  "interests": string[],
+  "references": string|null
 }`,
     }],
     { json: true }
   )
 
-  // Validate
-  if (!resume.contact?.name && !resume.contact?.nameAr) warnings.push('No name found')
-  if (!resume.contact?.email) warnings.push('No email found')
-  if (!resume.objective && !resume.objectiveAr) warnings.push('No objective/summary found')
-  if (!resume.experience?.length) warnings.push('No experience found')
-  if (!resume.skills?.technical?.length && !resume.skills?.soft?.length) warnings.push('No skills found')
+  // Track what was done
+  if (analysis.writingProblems.length > 0) {
+    notes.push(`Fixed ${analysis.writingProblems.length} writing issues (grammar, OCR, formatting)`)
+  }
+  if (analysis.weakWording.length > 0) {
+    notes.push(`Rewrote ${analysis.weakWording.length} weak phrases with strong action verbs`)
+  }
+  notes.push(`Adapted writing style for ${analysis.profession} (${analysis.seniority})`)
 
-  return { resume, warnings, detectedLanguage }
+  return { resume, notes, grammarFixed: analysis.writingProblems.length > 0 }
 }
 
 /**
- * Step 4: Professional enrichment — expand limited information.
- * NEVER invents employers, companies, degrees, or certifications.
- * Only enriches text quality (summaries, bullet points, skills wording).
+ * Stage 3: Quality check — verify no hallucinations.
  */
-async function enrichResume(resume: BilingualResume): Promise<{ resume: BilingualResume; notes: string[] }> {
-  const notes: string[] = []
-
-  const { data: enriched } = await run<BilingualResume>(
-    'resume_enrich',
+async function qualityCheck(resume: BilingualResume, rawText: string): Promise<QualityReport> {
+  const { data } = await run<QualityReport>(
+    'resume_quality_check',
     '', '',
     [{
       role: 'user',
-      content: `Professionally enrich this resume. Rules:
-- IMPROVE: Rewrite weak summaries, improve objectives, strengthen bullet points, expand skill descriptions
-- GENERATE: Add ATS-friendly bullet points for experience that lacks measurable impact (use "approx." for estimated metrics)
-- NORMALIZE: Fix grammar, improve wording, increase recruiter appeal
-- NEVER INVENT: Do NOT add fake employers, companies, degrees, certifications, or employment history
-- NEVER ADD: Do NOT add skills that aren't supported by the input
-- PRESERVE: Keep all factual information exactly as provided (names, dates, companies)
-- BILINGUAL: If objectiveAr exists, keep it in sync with the improved objective
+      content: `Audit this generated resume for quality issues. Compare against the original raw text to detect any hallucinations.
 
-Resume to enrich:
+CRITICAL CHECKS:
+1. Hallucinated facts — any employer, company, degree, certification, date, or metric NOT present in the source text
+2. Generic language — phrases so vague they could apply to anyone
+3. Missing action verbs — bullets starting with weak words
+4. Weak bullets — no measurable impact
+5. ATS formatting issues
+6. Repeated words/phrases
+7. Inconsistent formatting
+8. Missing critical sections
+
+Original raw text (first 3000 chars):
+${sanitizePromptInput(rawText, 3000)}
+
+Generated resume:
 ${JSON.stringify(resume, null, 2)}
 
-Return the same JSON shape with enriched content. Add a "enrichmentNotes" field is NOT needed — just return the improved resume.`,
+Return JSON:
+{
+  "hallucinations": string[] (any invented facts found — CRITICAL),
+  "genericLanguage": string[],
+  "missingActionVerbs": string[],
+  "weakBullets": string[],
+  "atsIssues": string[],
+  "repeatedPhrases": string[],
+  "inconsistentFormatting": string[],
+  "passedChecks": string[] (checks that passed),
+  "qualityScore": number (0-100)
+}`,
     }],
     { json: true }
   )
-
-  // Track what was enriched
-  if (enriched.objective !== resume.objective) notes.push('Objective/summary was professionally rewritten')
-  if (enriched.experience?.length && resume.experience?.length) {
-    if (enriched.experience[0].bullets?.length > (resume.experience[0].bullets?.length || 0)) {
-      notes.push('Experience bullets were expanded with ATS-friendly achievements')
-    }
-  }
-  if (enriched.skills?.technical?.length > (resume.skills?.technical?.length || 0)) {
-    notes.push('Technical skills were normalized and expanded')
-  }
-
-  return { resume: enriched, notes }
+  return data
 }
 
 /**
- * Step 5: ATS optimization — rewrite for maximum ATS compatibility.
+ * Stage 4: Multi-dimensional scoring.
  */
-async function optimizeATS(resume: BilingualResume, jobDescription?: string): Promise<BilingualResume> {
-  if (!jobDescription?.trim()) return resume
-
-  const { data: optimized } = await run<BilingualResume>(
-    'resume_ats_optimize_v2',
-    '', '',
-    [{
-      role: 'user',
-      content: `ATS-optimize this resume against the job description.
-
-Rules:
-- Reorder skills by relevance to the job description
-- Rewrite bullet points to include keywords from the JD (only if the skill genuinely exists)
-- NEVER add skills from the JD that the candidate doesn't have
-- Keep all factual information (names, dates, companies) exactly as provided
-- Quantify impact with "approx." if the original text suggests numbers
-- If objectiveAr exists, keep it in sync
-
-Resume:
-${JSON.stringify(resume, null, 2)}
-
-Job Description:
-${sanitizePromptInput(jobDescription, 10000)}
-
-Return the same JSON shape with ATS-optimized content.`,
-    }],
-    { json: true }
-  )
-
-  return optimized
-}
-
-/**
- * Step 6: Score the resume across multiple dimensions.
- */
-async function scoreResume(resume: BilingualResume, jobDescription?: string): Promise<ResumeScore> {
+async function scoreResume(resume: BilingualResume, analysis: IntelligentAnalysis, jobDescription?: string): Promise<ResumeScore> {
   const { data: score } = await run<ResumeScore>(
     'resume_score_v2',
     '', '',
@@ -285,7 +352,11 @@ async function scoreResume(resume: BilingualResume, jobDescription?: string): Pr
       role: 'user',
       content: `Score this resume across multiple dimensions. Be rigorous and honest.
 
-${jobDescription ? `Job Description (for ATS matching):\n${sanitizePromptInput(jobDescription, 5000)}\n` : ''}
+Profession: ${analysis.profession}
+Seniority: ${analysis.seniority}
+Industry: ${analysis.industry}
+
+${jobDescription ? `Job Description:\n${sanitizePromptInput(jobDescription, 3000)}\n` : ''}
 
 Resume:
 ${JSON.stringify(resume, null, 2)}
@@ -293,37 +364,36 @@ ${JSON.stringify(resume, null, 2)}
 Return JSON:
 {
   "overall": number (0-100),
-  "atsScore": number (0-100, ATS compatibility),
-  "completeness": number (0-100, how complete is the resume),
-  "keywordScore": number (0-100, keyword coverage${jobDescription ? ' vs JD' : ''}),
-  "formattingScore": number (0-100, structure and formatting quality),
+  "atsScore": number (0-100),
+  "completeness": number (0-100),
+  "keywordScore": number (0-100),
+  "formattingScore": number (0-100),
+  "grammarScore": number (0-100),
+  "impactScore": number (0-100, quality of achievements/impact),
   "dimensions": [{ "name": string, "score": number, "status": "good"|"warning"|"bad" }],
-  "quickWins": string[] (3 actionable improvements that take <5 min),
-  "missingCritical": string[] (critical missing elements)
+  "quickWins": string[] (3 actionable improvements under 5 min),
+  "missingCritical": string[],
+  "weakPhrases": string[] (specific weak phrases found),
+  "strongPhrases": string[] (specific strong phrases found),
+  "repeatedWords": string[],
+  "formattingIssues": string[]
 }`,
     }],
     { json: true }
   )
-
   return score
 }
 
 /**
- * Step 7: Identify missing information and generate questions.
+ * Stage 5: Missing info + keyword analysis (reuse existing functions).
  */
-async function identifyMissingInfo(resume: BilingualResume, targetRole?: string): Promise<MissingInfo> {
+async function identifyMissingInfo(resume: BilingualResume, analysis: IntelligentAnalysis): Promise<MissingInfo> {
   const { data } = await run<MissingInfo>(
     'resume_missing_info_v2',
     '', '',
     [{
       role: 'user',
-      content: `Identify what critical information is missing from this resume${targetRole ? ` for a "${targetRole}" role` : ''}.
-
-For each missing item:
-- "field": specific field name
-- "question": a clear, specific question to ask the user
-- "priority": "high" (must have), "medium" (should have), "low" (nice to have)
-- "suggestion": a helpful suggestion or example answer, or null
+      content: `Identify missing information in this resume for a ${analysis.profession} (${analysis.seniority} level) in the ${analysis.industry} industry.
 
 Resume:
 ${JSON.stringify(resume, null, 2)}
@@ -332,98 +402,101 @@ Return JSON array: [{ "field": string, "question": string, "priority": "high"|"m
     }],
     { json: true }
   )
-
   return data || []
 }
 
-/**
- * Step 8: Keyword analysis.
- */
-async function analyzeKeywords(resume: BilingualResume, jobDescription?: string): Promise<KeywordAnalysis> {
+async function analyzeKeywords(resume: BilingualResume, analysis: IntelligentAnalysis, jobDescription?: string): Promise<KeywordAnalysis> {
   const { data } = await run<KeywordAnalysis>(
     'resume_keyword_analyzer',
     '', '',
     [{
       role: 'user',
-      content: `Analyze keywords in this resume${jobDescription ? ' against the job description' : ''}.
+      content: `Analyze keywords in this resume for a ${analysis.profession} in ${analysis.industry}.
+
+${jobDescription ? `Job Description:\n${sanitizePromptInput(jobDescription, 3000)}\n` : ''}
 
 Resume:
 ${JSON.stringify(resume, null, 2)}
 
-${jobDescription ? `Job Description:\n${sanitizePromptInput(jobDescription, 5000)}\n` : ''}
-
 Return JSON:
 {
-  "detected": string[] (keywords found in the resume),
-  "suggested": string[] (keywords that should be added based on the role/industry),
-  "industryTerms": string[] (industry-standard terms present),
-  "actionVerbs": string[] (action verbs used in bullets),
-  "missingActionVerbs": string[] (strong action verbs that should be used)
+  "detected": string[],
+  "suggested": string[],
+  "industryTerms": string[],
+  "actionVerbs": string[],
+  "missingActionVerbs": string[]
 }`,
     }],
     { json: true }
   )
-
   return data
 }
 
-// ─── Full Pipeline ─────────────────────────────────────────────────
+// ─── Full Pipeline V3 ──────────────────────────────────────────────
 
-/**
- * Run the complete enhanced resume generation pipeline.
- *
- * @param rawText - Messy text (WhatsApp export, OCR, notes, etc.)
- * @param jobDescription - Optional JD for ATS optimization
- * @param options - { enrich: boolean, optimizeATS: boolean }
- */
-export async function generateResumeFromRawText(
+export async function generateResumeV3(
   rawText: string,
   jobDescription?: string,
-  options: { enrich?: boolean; optimizeATS?: boolean } = {}
-): Promise<PipelineResultV2> {
-  const { enrich = true, optimizeATS: shouldOptimize = true } = options
+  options: { runQualityCheck?: boolean } = {}
+): Promise<PipelineResultV3> {
+  const { runQualityCheck: shouldQualityCheck = true } = options
+  const t0 = Date.now()
+  let totalTokens = 0
 
-  // Step 1-2: Parse
-  const { resume: parsed, warnings, detectedLanguage } = await parseBilingualResume(rawText)
+  // Stage 1: Intelligent Analysis (15 stages)
+  const analysis = await runIntelligentAnalysis(rawText)
 
-  // Step 4: Enrich
-  let resume = parsed
-  let enrichmentNotes: string[] = []
-  let wasEnriched = false
-  if (enrich) {
-    const result = await enrichResume(parsed)
-    resume = result.resume
-    enrichmentNotes = result.notes
-    wasEnriched = enrichmentNotes.length > 0
+  // Stage 2: Parse + Grammar Fix + Industry-Aware Enrichment
+  const { resume, notes, grammarFixed } = await parseAndEnrich(rawText, analysis, jobDescription)
+
+  // Stage 3: Quality Check (hallucination detection)
+  let quality: QualityReport = {
+    hallucinations: [], genericLanguage: [], missingActionVerbs: [], weakBullets: [],
+    atsIssues: [], repeatedPhrases: [], inconsistentFormatting: [], passedChecks: ['All checks passed'], qualityScore: 100,
+  }
+  if (shouldQualityCheck) {
+    quality = await qualityCheck(resume, rawText)
+    if (quality.hallucinations.length > 0) {
+      notes.push(`⚠️ Quality check flagged ${quality.hallucinations.length} potential hallucinations — review recommended`)
+    }
   }
 
-  // Step 5: ATS Optimize
-  if (shouldOptimize && jobDescription?.trim()) {
-    resume = await optimizeATS(resume, jobDescription)
-  }
+  // Stage 4: Scoring
+  const score = await scoreResume(resume, analysis, jobDescription)
 
-  // Step 6: Score
-  const score = await scoreResume(resume, jobDescription)
+  // Stage 5: Missing Info + Keywords
+  const [missingInfo, keywords] = await Promise.all([
+    identifyMissingInfo(resume, analysis),
+    analyzeKeywords(resume, analysis, jobDescription),
+  ])
 
-  // Step 7: Missing info
-  const missingInfo = await identifyMissingInfo(resume)
-
-  // Step 8: Keywords
-  const keywords = await analyzeKeywords(resume, jobDescription)
+  const latencyMs = Date.now() - t0
+  const warnings: string[] = []
+  if (analysis.missingInfo.length > 0) warnings.push(`${analysis.missingInfo.length} critical fields missing`)
+  if (quality.hallucinations.length > 0) warnings.push(`${quality.hallucinations.length} potential hallucinations detected`)
+  if (analysis.writingProblems.length > 0) warnings.push(`${analysis.writingProblems.length} writing problems fixed`)
 
   return {
+    analysis,
     resume,
     score,
     missingInfo,
     keywords,
+    quality,
     warnings,
-    enrichmentNotes,
-    detectedLanguage,
-    wasEnriched,
+    enrichmentNotes: notes,
+    detectedLanguage: analysis.language,
+    profession: analysis.profession,
+    seniority: analysis.seniority,
+    industry: analysis.industry,
+    wasEnriched: notes.length > 0,
+    wasGrammarFixed: grammarFixed,
+    tokensUsed: totalTokens,
+    latencyMs,
   }
 }
 
-// ─── Section-level rewrite functions ───────────────────────────────
+// ─── Section Rewrite + Translation (reused from V2) ───────────────
 
 export async function rewriteSection(
   section: 'objective' | 'experience' | 'skills' | 'education',
@@ -431,56 +504,37 @@ export async function rewriteSection(
   jobDescription?: string
 ): Promise<any> {
   const sectionNames = { objective: 'objective/summary', experience: 'experience bullets', skills: 'skills', education: 'education' }
-
   const { data } = await run<any>(
     'resume_rewrite_section',
     '', '',
     [{
       role: 'user',
-      content: `Rewrite ONLY the "${sectionNames[section]}" section of this resume to be more professional and ATS-friendly.
+      content: `Rewrite ONLY the "${sectionNames[section]}" section. Improve wording, grammar, ATS-friendliness. Never invent facts. Keep all names, dates, companies exactly as provided.
+${jobDescription ? `Optimize for: ${sanitizePromptInput(jobDescription, 2000)}` : ''}
 
-Rules:
-- Keep ALL facts exactly as provided (names, dates, companies, degrees)
-- Improve wording, grammar, and impact
-- Add measurable achievements with "approx." where the text suggests impact
-- Never invent new information
-${jobDescription ? `- Optimize for keywords from this job description:\n${sanitizePromptInput(jobDescription, 3000)}` : ''}
-
-Section content to rewrite:
+Content:
 ${JSON.stringify(content, null, 2)}
 
 Return the same JSON shape with improved content.`,
     }],
     { json: true }
   )
-
   return data
 }
 
-/**
- * Translate resume to another language.
- */
 export async function translateResume(resume: BilingualResume, targetLang: 'ar' | 'en'): Promise<BilingualResume> {
   const { data } = await run<BilingualResume>(
     'resume_translate',
     '', '',
     [{
       role: 'user',
-      content: `Translate this resume to ${targetLang === 'ar' ? 'Arabic' : 'English'}.
+      content: `Translate this resume to ${targetLang === 'ar' ? 'Arabic' : 'English'}. Keep proper nouns in original form. Preserve all JSON structure.
 
-Rules:
-- Translate ALL fields accurately
-- Keep proper nouns (names, companies, institutions) in their original form if they have no standard translation
-- For bilingual fields (name/nameAr, objective/objectiveAr), fill the empty one
-- Preserve all JSON structure
-
-Resume:
 ${JSON.stringify(resume, null, 2)}
 
 Return the complete resume JSON with both languages filled.`,
     }],
     { json: true }
   )
-
   return data
 }
