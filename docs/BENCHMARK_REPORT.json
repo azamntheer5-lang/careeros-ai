@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-07-10T01:29:59.845Z",
+  "totalFixtures": 3,
+  "successful": 0,
+  "failed": 3,
+  "avgOverallScore": 0,
+  "avgLatencyMs": 0,
+  "totalHallucinations": 0,
+  "results": [
+    {
+      "fixtureId": "cyber-grad-bilingual",
+      "label": "Cybersecurity Graduate — Bilingual WhatsApp Export",
+      "category": "cybersecurity",
+      "inputWords": 183,
+      "latencyMs": 90014,
+      "overallScore": null,
+      "hallucinations": [],
+      "error": "The operation timed out.",
+      "metrics": []
+    },
+    {
+      "fixtureId": "fresh-grad-short",
+      "label": "Fresh Graduate — Short Text (50 words)",
+      "category": "fresh-graduate",
+      "inputWords": 32,
+      "latencyMs": 52816,
+      "overallScore": null,
+      "hallucinations": [],
+      "error": "API request failed with status 429: {\"error\":\"Too many requests, please try again later\"}",
+      "metrics": []
+    },
+    {
+      "fixtureId": "senior-swe-linkedin",
+      "label": "Senior Software Engineer — LinkedIn Copy",
+      "category": "software-engineering",
+      "inputWords": 148,
+      "latencyMs": 1814,
+      "overallScore": null,
+      "hallucinations": [],
+      "error": "API request failed with status 429: {\"error\":\"Too many requests, please try again later\"}",
+      "metrics": []
+    }
+  ]
+}

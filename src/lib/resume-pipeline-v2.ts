@@ -153,6 +153,7 @@ export type PipelineResultV3 = {
   wasGrammarFixed: boolean
   tokensUsed: number
   latencyMs: number
+  confidence: Record<string, 'high' | 'medium' | 'low'>
 }
 
 // ─── Pipeline Steps ────────────────────────────────────────────────
@@ -493,7 +494,55 @@ export async function generateResumeV3(
     wasGrammarFixed: grammarFixed,
     tokensUsed: totalTokens,
     latencyMs,
+    confidence: calculateConfidence(resume, analysis, quality),
   }
+}
+
+/**
+ * Calculate per-field confidence based on:
+ * - Whether the field was directly extracted (high) vs enriched (medium) vs inferred (low)
+ * - Whether quality check found hallucinations for this field (low)
+ */
+function calculateConfidence(
+  resume: BilingualResume,
+  analysis: IntelligentAnalysis,
+  quality: QualityReport
+): Record<string, 'high' | 'medium' | 'low'> {
+  const confidence: Record<string, 'high' | 'medium' | 'low'> = {}
+
+  // Contact fields — high confidence if directly extracted
+  confidence['contact.name'] = resume.contact?.name ? 'high' : 'low'
+  confidence['contact.email'] = resume.contact?.email ? 'high' : 'low'
+  confidence['contact.phone'] = resume.contact?.phone ? 'high' : 'low'
+  confidence['contact.location'] = resume.contact?.location ? 'high' : 'low'
+
+  // Objective — medium if enriched (wasGrammarFixed implies enrichment)
+  confidence['objective'] = resume.objective ? 'medium' : 'low'
+
+  // Experience — medium (enriched bullets)
+  confidence['experience'] = resume.experience?.length > 0 ? 'medium' : 'low'
+
+  // Education — high (factual, directly extracted)
+  confidence['education'] = resume.education?.length > 0 ? 'high' : 'low'
+
+  // Skills — medium (may have been categorized/normalized)
+  confidence['skills'] = (resume.skills?.technical?.length || 0) > 0 ? 'medium' : 'low'
+
+  // Courses — high (factual)
+  confidence['courses'] = resume.courses?.length > 0 ? 'high' : 'low'
+
+  // Certifications — high (factual)
+  confidence['certifications'] = (resume as any).certifications?.length > 0 ? 'high' : 'low'
+
+  // Lower confidence for fields with hallucination flags
+  for (const h of quality.hallucinations) {
+    const fieldMatch = h.match(/(\w+\.\w+)/)
+    if (fieldMatch) {
+      confidence[fieldMatch[1]] = 'low'
+    }
+  }
+
+  return confidence
 }
 
 // ─── Section Rewrite + Translation (reused from V2) ───────────────
