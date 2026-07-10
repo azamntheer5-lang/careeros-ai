@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { run } from '@/lib/ai'
-import { getCurrentUser, err } from '@/lib/server'
+import { run, sanitizePromptInput } from '@/lib/ai'
+import { getCurrentUser, err, clipInput } from '@/lib/server'
 import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** AI-generate a complete, profile-aware resume draft from free-form context. */
@@ -14,23 +14,36 @@ export async function POST(req: Request) {
     if (!context?.trim()) {
       return NextResponse.json({ error: 'Context is required' }, { status: 400 })
     }
+
+    // SECURITY: clip + sanitize the user-supplied context before interpolating
+    // it into the LLM prompt. clipInput bounds cost; sanitizePromptInput strips
+    // common prompt-injection patterns ("ignore previous instructions",
+    // "[SYSTEM]", "you are now …", control chars) so an attacker can't
+    // redirect the model away from its registered system prompt.
+    const safeContext = sanitizePromptInput(clipInput(context, 15000), 15000)
+    // SECURITY: clip and validate enum-style scalar fields before persisting.
+    const safeTitle = clipInput(title, 200) || 'AI-Generated Resume'
+    const safeTemplate = clipInput(template, 50) || 'modern'
+    const safeAccent = clipInput(accent, 50) || 'emerald'
+    const safeCareerMode = clipInput(careerMode, 100)
+
     const { data } = await run<any>(
       'resume_generate',
       user.id,
       user.name || '',
       [{
         role: 'user',
-        content: `Create a complete resume from this context${careerMode ? ` optimized for a ${careerMode} career track` : ''}. Return JSON with shape: { "summary": string, "experience": [{ "title": string, "company": string, "location": string, "startDate": string, "endDate": string, "bullets": string[] }], "education": [{ "degree": string, "school": string, "location": string, "startDate": string, "endDate": string, "details": string }], "skills": string[], "projects": [{ "name": string, "description": string, "link": string }], "certifications": [{ "name": string, "issuer": string, "date": string }] }.\n\nContext: ${context}`,
+        content: `Create a complete resume from this context${safeCareerMode ? ` optimized for a ${safeCareerMode} career track` : ''}. Return JSON with shape: { "summary": string, "experience": [{ "title": string, "company": string, "location": string, "startDate": string, "endDate": string, "bullets": string[] }], "education": [{ "degree": string, "school": string, "location": string, "startDate": string, "endDate": string, "details": string }], "skills": string[], "projects": [{ "name": string, "description": string, "link": string }], "certifications": [{ "name": string, "issuer": string, "date": string }] }.\n\nContext: ${safeContext}`,
       }],
       { json: true }
     )
     const resume = await db.resume.create({
       data: {
         userId: user.id,
-        title: title || 'AI-Generated Resume',
-        template: template || 'modern',
-        accent: accent || 'emerald',
-        careerMode: careerMode || null,
+        title: safeTitle,
+        template: safeTemplate,
+        accent: safeAccent,
+        careerMode: safeCareerMode || null,
         data: JSON.stringify(data),
         version: 1,
       },

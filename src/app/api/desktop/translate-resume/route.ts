@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser, err } from '@/lib/server'
 import { rateLimitOr429 } from '@/lib/rate-limit'
-import { translateResume, BilingualResume } from '@/lib/resume-pipeline-v2'
+import { translateResume, BilingualResume } from '@/lib/resume-operations'
 
 /**
  * POST /api/desktop/translate-resume

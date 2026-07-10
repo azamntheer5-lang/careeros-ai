@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser, err, clipInput } from '@/lib/server'
 import { rateLimitOr429 } from '@/lib/rate-limit'
-import { rewriteSection } from '@/lib/resume-pipeline-v2'
+import { rewriteSection } from '@/lib/resume-operations'
 
 /**
  * POST /api/desktop/rewrite-section

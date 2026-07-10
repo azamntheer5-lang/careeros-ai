@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getCurrentUser, err } from '@/lib/server'
+import { getCurrentUser, err, clipInput } from '@/lib/server'
+import { rateLimitOr429 } from '@/lib/rate-limit'
 
 /** List version snapshots for a resume. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const user = await getCurrentUser()
+    // SECURITY: rate-limit to prevent version-enumeration scraping.
+    const limited = rateLimitOr429(user.id, 'standard')
+    if (limited) return limited
     const resume = await db.resume.findUnique({ where: { id } })
+    // SECURITY: ownership check — prevents IDOR.
     if (!resume || resume.userId !== user.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
@@ -26,7 +31,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
     const user = await getCurrentUser()
+    // SECURITY: rate-limit snapshot creation to prevent version-table flooding.
+    const limited = rateLimitOr429(user.id, 'standard')
+    if (limited) return limited
     const resume = await db.resume.findUnique({ where: { id } })
+    // SECURITY: ownership check — prevents IDOR write.
     if (!resume || resume.userId !== user.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
@@ -39,7 +48,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         data: resume.data,
         atsScore: resume.atsScore,
         aiScore: resume.aiScore,
-        note: note || `Version ${nextVersion}`,
+        // SECURITY: clip user-supplied note.
+        note: clipInput(note, 500) || `Version ${nextVersion}`,
       },
     })
     await db.resume.update({ where: { id }, data: { version: nextVersion } })

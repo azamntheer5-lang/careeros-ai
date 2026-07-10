@@ -74,3 +74,39 @@ export function requireField(value: any, name: string): string {
   }
   return value
 }
+
+/**
+ * Build a safe Content-Disposition header value for a download.
+ *
+ * SECURITY: Prevents HTTP header injection and filename XSS by:
+ * 1. Stripping CR/LF (and all control chars) — blocks header splitting.
+ * 2. Stripping path separators — blocks path traversal in saved filename.
+ * 3. Limiting to 100 chars — prevents oversized headers / DoS.
+ * 4. Producing BOTH an ASCII-safe fallback (`filename="..."`) and a
+ *    RFC 5987 / 6266 UTF-8 encoded value (`filename*=UTF-8''...`) so
+ *    non-ASCII names (Arabic, etc.) render correctly in modern browsers
+ *    without ever allowing raw quotes / semicolons / newlines through.
+ *
+ * @param rawName - User-supplied filename (without extension)
+ * @param ext - File extension WITHOUT leading dot, e.g. "pdf" or "docx"
+ */
+export function safeContentDisposition(rawName: unknown, ext: string): string {
+  const EXT = String(ext || 'bin').replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 5)
+  // Coerce to string and strip control chars + path separators.
+  let name = typeof rawName === 'string' ? rawName : (rawName == null ? '' : String(rawName))
+  name = name.replace(/[\x00-\x1f\x7f\r\n]/g, '').replace(/[\\/]/g, '').trim()
+  if (!name) name = 'download'
+  // Hard cap at 100 chars (post-trim) to prevent header-overflow DoS.
+  if (name.length > 100) name = name.slice(0, 100).trim() || 'download'
+
+  // ASCII fallback: keep only printable ASCII that's safe inside a quoted
+  // string. Replace anything else with underscores, then collapse runs.
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/[";]/g, '_').replace(/_+/g, '_').trim() || 'download'
+
+  // RFC 5987 UTF-8 encoded value for modern browsers (preserves Arabic, etc.)
+  const utf8encoded = encodeURIComponent(name)
+    .replace(/['()]/g, escape) // escape chars that encodeURIComponent leaves alone
+    .replace(/\*/g, '%2A')
+
+  return `attachment; filename="${ascii}.${EXT}"; filename*=UTF-8''${utf8encoded}.${EXT}`
+}
