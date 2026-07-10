@@ -72,8 +72,10 @@ export type OptimizedResult = {
 
 export function detectLanguage(text: string): string {
   const hasArabic = /[\u0600-\u06FF]/.test(text)
-  const hasEnglish = /[a-zA-Z]/.test(text)
-  if (hasArabic && hasEnglish) return 'bilingual'
+  // Count Arabic vs English characters to determine dominant language
+  const arabicChars = (text.match(/[\u0600-\u06FF]/g) || []).length
+  const englishChars = (text.match(/[a-zA-Z]/g) || []).length
+  if (hasArabic && englishChars > arabicChars * 0.5) return 'bilingual'
   if (hasArabic) return 'ar'
   return 'en'
 }
@@ -108,7 +110,7 @@ export function cleanOCRText(text: string): string {
 
   // Fix "at" in email context: "rob chen at gmail" → "rob.chen@gmail"
   cleaned = cleaned.replace(/(\w+)\s+at\s+(\w+)/gi, (match, before, after) => {
-    if (after.toLowerCase().match(/gmail|yahoo|hotmail|outlook|email/)) {
+    if (after.toLowerCase().match(/gmail|yahoo|hotmail|outlook|email|mail/)) {
       return `${before}@${after}`
     }
     return match
