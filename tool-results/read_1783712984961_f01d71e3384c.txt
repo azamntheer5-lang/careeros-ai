@@ -1,0 +1,808 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useRef, useCallback, ReactNode } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { useProfile } from '@/components/careeros/profile-context'
+     9→import { ModuleHeader } from '@/components/careeros/module-header'
+    10→import { Spinner } from '@/components/careeros/loading'
+    11→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { cn } from '@/lib/utils'
+    16→import {
+    17→  FileScan,
+    18→  UploadCloud,
+    19→  Trash2,
+    20→  Sparkles,
+    21→  X,
+    22→  User,
+    23→  Mail,
+    24→  Phone,
+    25→  MapPin,
+    26→  Award,
+    27→  Briefcase,
+    28→  GraduationCap,
+    29→  Wrench,
+    30→  FolderGit2,
+    31→  BadgeCheck,
+    32→  FileWarning,
+    33→  CheckCircle2,
+    34→  FileText,
+    35→  Globe,
+    36→  Linkedin,
+    37→} from 'lucide-react'
+    38→
+    39→type DocType = 'resume' | 'certificate' | 'portfolio' | 'other'
+    40→type DocStatus = 'pending' | 'parsed' | 'error'
+    41→
+    42→type DocListItem = {
+    43→  id: string
+    44→  userId: string | null
+    45→  type: DocType
+    46→  filename: string
+    47→  mimeType: string
+    48→  parsed: string | null
+    49→  status: DocStatus
+    50→  createdAt: string
+    51→}
+    52→
+    53→type ParsedResume = {
+    54→  contact?: {
+    55→    name?: string
+    56→    email?: string
+    57→    phone?: string
+    58→    location?: string
+    59→    website?: string
+    60→    linkedin?: string
+    61→  }
+    62→  summary?: string
+    63→  experience?: Array<{
+    64→    title?: string
+    65→    company?: string
+    66→    location?: string
+    67→    startDate?: string
+    68→    endDate?: string
+    69→    bullets?: string[]
+    70→  }>
+    71→  education?: Array<{
+    72→    degree?: string
+    73→    school?: string
+    74→    location?: string
+    75→    startDate?: string
+    76→    endDate?: string
+    77→    details?: string
+    78→  }>
+    79→  skills?: string[]
+    80→  projects?: Array<{ name?: string; description?: string; link?: string }>
+    81→  certifications?: Array<{ name?: string; issuer?: string; date?: string }>
+    82→}
+    83→
+    84→type ParsedCert = {
+    85→  name?: string
+    86→  issuer?: string
+    87→  date?: string
+    88→  holderName?: string
+    89→  credentialId?: string
+    90→}
+    91→
+    92→function detectType(filename: string): DocType {
+    93→  const n = filename.toLowerCase()
+    94→  if (/(resume|cv)/.test(n)) return 'resume'
+    95→  if (/(cert|certificate)/.test(n)) return 'certificate'
+    96→  if (/(portfolio)/.test(n)) return 'portfolio'
+    97→  return 'other'
+    98→}
+    99→
+   100→function parseParsed<T>(raw: string | null): T | null {
+   101→  if (!raw) return null
+   102→  try {
+   103→    return JSON.parse(raw) as T
+   104→  } catch {
+   105→    return null
+   106→  }
+   107→}
+   108→
+   109→function summaryFor(doc: DocListItem): string {
+   110→  if (doc.status === 'pending') return 'Parsing…'
+   111→  if (doc.status === 'error' || !doc.parsed) return 'Could not parse — try re-uploading'
+   112→  if (doc.type === 'certificate') {
+   113→    const c = parseParsed<ParsedCert>(doc.parsed)
+   114→    if (!c) return 'Certificate parsed'
+   115→    return [c.name, c.issuer].filter(Boolean).join(' · ') || 'Certificate parsed'
+   116→  }
+   117→  // resume / portfolio / other → show experience/skill counts
+   118→  const r = parseParsed<ParsedResume>(doc.parsed)
+   119→  if (!r) return 'Document parsed'
+   120→  const exp = r.experience?.length ?? 0
+   121→  const skl = r.skills?.length ?? 0
+   122→  const edu = r.education?.length ?? 0
+   123→  const bits: string[] = []
+   124→  if (exp) bits.push(`${exp} experience${exp === 1 ? '' : 's'}`)
+   125→  if (skl) bits.push(`${skl} skill${skl === 1 ? '' : 's'}`)
+   126→  if (edu) bits.push(`${edu} education`)
+   127→  return bits.length ? `${bits.join(' · ')} detected` : 'Document parsed'
+   128→}
+   129→
+   130→const TYPE_BADGE: Record<DocType, { label: string; cls: string }> = {
+   131→  resume: { label: 'Resume', cls: 'bg-brand/15 text-brand border-brand/30' },
+   132→  certificate: { label: 'Certificate', cls: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
+   133→  portfolio: { label: 'Portfolio', cls: 'bg-rose-500/15 text-rose-600 border-rose-500/30' },
+   134→  other: { label: 'Other', cls: 'bg-muted text-muted-foreground border-border' },
+   135→}
+   136→
+   137→const STATUS_BADGE: Record<DocStatus, { label: string; cls: string }> = {
+   138→  pending: { label: 'Pending', cls: 'bg-amber-500/15 text-amber-600 border-amber-500/30' },
+   139→  parsed: { label: 'Parsed', cls: 'bg-brand/15 text-brand border-brand/30' },
+   140→  error: { label: 'Error', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+   141→}
+   142→
+   143→export function DocumentsModule() {
+   144→  const { t } = useApp()
+   145→  const { toast } = useToast()
+   146→  const { refresh: refreshProfile } = useProfile()
+   147→  const [docs, setDocs] = useState<DocListItem[]>([])
+   148→  const [loading, setLoading] = useState(true)
+   149→  const [uploading, setUploading] = useState(false)
+   150→  const [applying, setApplying] = useState(false)
+   151→  const [selectedId, setSelectedId] = useState<string | null>(null)
+   152→  const [dragging, setDragging] = useState(false)
+   153→  const inputRef = useRef<HTMLInputElement>(null)
+   154→
+   155→  const load = useCallback(async () => {
+   156→    setLoading(true)
+   157→    try {
+   158→      const { documents } = await api<{ documents: DocListItem[] }>('/api/documents')
+   159→      setDocs(documents)
+   160→    } catch {
+   161→      // silent
+   162→    }
+   163→    setLoading(false)
+   164→  }, [])
+   165→
+   166→  useEffect(() => {
+   167→    load()
+   168→  }, [load])
+   169→
+   170→  const readFileAsBase64 = (file: File) =>
+   171→    new Promise<string>((resolve, reject) => {
+   172→      const r = new FileReader()
+   173→      r.onload = () => {
+   174→        const result = String(r.result || '')
+   175→        const i = result.indexOf('base64,')
+   176→        resolve(i >= 0 ? result.slice(i + 7) : result)
+   177→      }
+   178→      r.onerror = reject
+   179→      r.readAsDataURL(file)
+   180→    })
+   181→
+   182→  const handleFile = async (file: File) => {
+   183→    if (!file) return
+   184→    setUploading(true)
+   185→    try {
+   186→      const base64 = await readFileAsBase64(file)
+   187→      const type = detectType(file.name)
+   188→      const mimeType = file.type || 'application/octet-stream'
+   189→      const res = await api<{ document: DocListItem; parsed: unknown; error?: string }>(
+   190→        '/api/documents',
+   191→        { method: 'POST', body: { filename: file.name, mimeType, base64, type } }
+   192→      )
+   193→      setDocs((d) => [res.document, ...d])
+   194→      if (res.parsed) {
+   195→        toast({
+   196→          title: 'Document parsed',
+   197→          description: `${file.name} is ready to review and apply.`,
+   198→        })
+   199→        setSelectedId(res.document.id)
+   200→      } else if (res.error) {
+   201→        toast({
+   202→          title: 'Parsing failed',
+   203→          description: res.error,
+   204→          variant: 'destructive',
+   205→        })
+   206→      }
+   207→    } catch (e) {
+   208→      toast({
+   209→        title: 'Upload failed',
+   210→        description: (e as Error).message,
+   211→        variant: 'destructive',
+   212→      })
+   213→    } finally {
+   214→      setUploading(false)
+   215→    }
+   216→  }
+   217→
+   218→  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+   219→    const f = e.target.files?.[0]
+   220→    if (f) handleFile(f)
+   221→    e.target.value = ''
+   222→  }
+   223→
+   224→  const onDrop = (e: React.DragEvent) => {
+   225→    e.preventDefault()
+   226→    setDragging(false)
+   227→    const f = e.dataTransfer.files?.[0]
+   228→    if (f) handleFile(f)
+   229→  }
+   230→
+   231→  const remove = async (id: string) => {
+   232→    try {
+   233→      await api(`/api/documents/${id}`, { method: 'DELETE' })
+   234→      setDocs((d) => d.filter((x) => x.id !== id))
+   235→      if (selectedId === id) setSelectedId(null)
+   236→      toast({ title: 'Document deleted' })
+   237→    } catch (e) {
+   238→      toast({
+   239→        title: 'Delete failed',
+   240→        description: (e as Error).message,
+   241→        variant: 'destructive',
+   242→      })
+   243→    }
+   244→  }
+   245→
+   246→  const apply = async (id: string) => {
+   247→    setApplying(true)
+   248→    try {
+   249→      const res = await api<{
+   250→        applied: { skillsAdded: number; targetRole: string | null }
+   251→      }>(`/api/documents/${id}/apply`, { method: 'POST' })
+   252→      toast({
+   253→        title: 'Applied to your profile',
+   254→        description: `${res.applied.skillsAdded} skill${
+   255→          res.applied.skillsAdded === 1 ? '' : 's'
+   256→        } added to strengths${
+   257→          res.applied.targetRole ? ` · target role set to ${res.applied.targetRole}` : ''
+   258→        }. A new resume was created in the Resume Engine.`,
+   259→      })
+   260→      await refreshProfile()
+   261→    } catch (e) {
+   262→      toast({
+   263→        title: 'Apply failed',
+   264→        description: (e as Error).message,
+   265→        variant: 'destructive',
+   266→      })
+   267→    } finally {
+   268→      setApplying(false)
+   269→    }
+   270→  }
+   271→
+   272→  const selected = docs.find((d) => d.id === selectedId) || null
+   273→
+   274→  return (
+   275→    <div>
+   276→      <ModuleHeader title={t('documentsTitle')} subtitle={t('documentsSub')} icon={FileScan} />
+   277→
+   278→      <div className="grid grid-cols-1 lg:grid-cols-[1fr_440px] gap-4 items-start">
+   279→        {/* LEFT — upload + list */}
+   280→        <div className="space-y-4">
+   281→          {/* Upload zone */}
+   282→          <Card
+   283→            onDragOver={(e) => {
+   284→              e.preventDefault()
+   285→              setDragging(true)
+   286→            }}
+   287→            onDragLeave={() => setDragging(false)}
+   288→            onDrop={onDrop}
+   289→            onClick={() => inputRef.current?.click()}
+   290→            className={cn(
+   291→              'border-2 border-dashed cursor-pointer transition-all hover:border-brand/50 hover:bg-brand-soft/20',
+   292→              dragging ? 'border-brand bg-brand-soft/40 scale-[1.005]' : 'border-border'
+   293→            )}
+   294→          >
+   295→            <CardContent className="p-8 flex flex-col items-center justify-center text-center gap-3">
+   296→              {uploading ? (
+   297→                <>
+   298→                  <div className="h-12 w-12 rounded-xl bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/20">
+   299→                    <Spinner className="h-6 w-6" />
+   300→                  </div>
+   301→                  <div>
+   302→                    <div className="text-sm font-medium">{t('parsing')}</div>
+   303→                    <div className="text-xs text-muted-foreground mt-1">
+   304→                      AI is reading your document with vision OCR…
+   305→                    </div>
+   306→                  </div>
+   307→                </>
+   308→              ) : (
+   309→                <>
+   310→                  <div className="h-12 w-12 rounded-xl bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/20">
+   311→                    <UploadCloud className="h-6 w-6" />
+   312→                  </div>
+   313→                  <div>
+   314→                    <div className="text-sm font-medium">
+   315→                      {t('upload')} a resume, certificate or image
+   316→                    </div>
+   317→                    <div className="text-xs text-muted-foreground mt-1">
+   318→                      Drag &amp; drop or click · PNG, JPG, PDF · AI extracts everything
+   319→                    </div>
+   320→                  </div>
+   321→                  <Button
+   322→                    type="button"
+   323→                    variant="outline"
+   324→                    size="sm"
+   325→                    className="mt-1 rounded-full pointer-events-none"
+   326→                    onClick={(e) => e.stopPropagation()}
+   327→                  >
+   328→                    <Sparkles className="h-3.5 w-3.5 text-brand" /> {t('extract')} with AI
+   329→                  </Button>
+   330→                </>
+   331→              )}
+   332→              <input
+   333→                ref={inputRef}
+   334→                type="file"
+   335→                accept="image/*,application/pdf"
+   336→                className="hidden"
+   337→                onChange={onInputChange}
+   338→              />
+   339→            </CardContent>
+   340→          </Card>
+   341→
+   342→          {/* Documents list */}
+   343→          {loading ? (
+   344→            <Card>
+   345→              <CardContent className="p-8 flex items-center justify-center">
+   346→                <Spinner className="h-6 w-6 text-brand" />
+   347→              </CardContent>
+   348→            </Card>
+   349→          ) : docs.length === 0 ? (
+   350→            <EmptyState />
+   351→          ) : (
+   352→            <Card>
+   353→              <CardHeader className="pb-2">
+   354→                <CardTitle className="text-sm font-medium flex items-center gap-2">
+   355→                  <FileText className="h-4 w-4 text-brand" />
+   356→                  Your documents
+   357→                  <Badge variant="outline" className="ml-auto text-[10px]">
+   358→                    {docs.length}
+   359→                  </Badge>
+   360→                </CardTitle>
+   361→              </CardHeader>
+   362→              <CardContent>
+   363→                <ScrollArea className="max-h-[60vh]">
+   364→                  <div className="space-y-2 pr-2">
+   365→                    {docs.map((doc, i) => (
+   366→                      <motion.div
+   367→                        key={doc.id}
+   368→                        initial={{ opacity: 0, y: 6 }}
+   369→                        animate={{ opacity: 1, y: 0 }}
+   370→                        transition={{ delay: Math.min(i * 0.03, 0.3) }}
+   371→                      >
+   372→                        <DocCard
+   373→                          doc={doc}
+   374→                          selected={selectedId === doc.id}
+   375→                          onSelect={() => setSelectedId(doc.id)}
+   376→                          onDelete={() => remove(doc.id)}
+   377→                        />
+   378→                      </motion.div>
+   379→                    ))}
+   380→                  </div>
+   381→                </ScrollArea>
+   382→              </CardContent>
+   383→            </Card>
+   384→          )}
+   385→        </div>
+   386→
+   387→        {/* RIGHT — preview panel */}
+   388→        <div className="lg:sticky lg:top-4">
+   389→          <AnimatePresence mode="wait">
+   390→            {selected ? (
+   391→              <motion.div
+   392→                key={selected.id}
+   393→                initial={{ opacity: 0, x: 12 }}
+   394→                animate={{ opacity: 1, x: 0 }}
+   395→                exit={{ opacity: 0, x: -12 }}
+   396→                transition={{ duration: 0.2 }}
+   397→              >
+   398→                <PreviewPanel
+   399→                  doc={selected}
+   400→                  applying={applying}
+   401→                  onApply={() => apply(selected.id)}
+   402→                  onClose={() => setSelectedId(null)}
+   403→                />
+   404→              </motion.div>
+   405→            ) : (
+   406→              <motion.div
+   407→                key="empty"
+   408→                initial={{ opacity: 0 }}
+   409→                animate={{ opacity: 1 }}
+   410→                exit={{ opacity: 0 }}
+   411→              >
+   412→                <Card className="border-dashed">
+   413→                  <CardContent className="p-8 text-center">
+   414→                    <div className="mx-auto h-10 w-10 rounded-xl bg-muted/60 flex items-center justify-center mb-3">
+   415→                      <FileScan className="h-5 w-5 text-muted-foreground" />
+   416→                    </div>
+   417→                    <p className="text-sm font-medium">No document selected</p>
+   418→                    <p className="text-xs text-muted-foreground mt-1">
+   419→                      Click a parsed document on the left to preview the AI-extracted data and
+   420→                      apply it to your career profile.
+   421→                    </p>
+   422→                  </CardContent>
+   423→                </Card>
+   424→              </motion.div>
+   425→            )}
+   426→          </AnimatePresence>
+   427→        </div>
+   428→      </div>
+   429→    </div>
+   430→  )
+   431→}
+   432→
+   433→function EmptyState() {
+   434→  const { t } = useApp()
+   435→  return (
+   436→    <Card className="border-dashed">
+   437→      <CardContent className="p-10 flex flex-col items-center text-center gap-3">
+   438→        <div className="relative">
+   439→          <div className="absolute inset-0 blur-2xl bg-brand/20 rounded-full" />
+   440→          <div className="relative h-16 w-16 rounded-2xl bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/30">
+   441→            <FileScan className="h-8 w-8" />
+   442→          </div>
+   443→        </div>
+   444→        <div>
+   445→          <p className="text-base font-semibold">Upload your first document</p>
+   446→          <p className="text-sm text-muted-foreground mt-1 max-w-md">
+   447→            Drop a resume, certificate or any career image above. Our vision AI will extract
+   448→            structured data and let you build your profile in one click.
+   449→          </p>
+   450→        </div>
+   451→        <Badge variant="outline" className="bg-brand-soft/40 border-brand/30 text-brand">
+   452→          {t('extract')} with vision AI
+   453→        </Badge>
+   454→      </CardContent>
+   455→    </Card>
+   456→  )
+   457→}
+   458→
+   459→function DocCard({
+   460→  doc,
+   461→  selected,
+   462→  onSelect,
+   463→  onDelete,
+   464→}: {
+   465→  doc: DocListItem
+   466→  selected: boolean
+   467→  onSelect: () => void
+   468→  onDelete: () => void
+   469→}) {
+   470→  const typeBadge = TYPE_BADGE[doc.type] || TYPE_BADGE.other
+   471→  const statusBadge = STATUS_BADGE[doc.status] || STATUS_BADGE.pending
+   472→  const canPreview = doc.status === 'parsed' && !!doc.parsed
+   473→
+   474→  return (
+   475→    <div
+   476→      role="button"
+   477→      tabIndex={0}
+   478→      onClick={onSelect}
+   479→      onKeyDown={(e) => {
+   480→        if (e.key === 'Enter' || e.key === ' ') {
+   481→          e.preventDefault()
+   482→          onSelect()
+   483→        }
+   484→      }}
+   485→      className={cn(
+   486→        'group relative rounded-xl border p-3 cursor-pointer transition-all hover:border-brand/40 hover:bg-brand-soft/20',
+   487→        selected ? 'border-brand bg-brand-soft/30 ring-1 ring-brand/30' : 'border-border bg-card'
+   488→      )}
+   489→    >
+   490→      <div className="flex items-start gap-3">
+   491→        <div
+   492→          className={cn(
+   493→            'shrink-0 h-9 w-9 rounded-lg flex items-center justify-center ring-1',
+   494→            doc.type === 'resume'
+   495→              ? 'bg-brand/10 text-brand ring-brand/20'
+   496→              : doc.type === 'certificate'
+   497→                ? 'bg-amber-500/10 text-amber-600 ring-amber-500/20'
+   498→                : 'bg-muted text-muted-foreground ring-border'
+   499→          )}
+   500→        >
+   501→          {doc.type === 'certificate' ? (
+   502→            <Award className="h-4 w-4" />
+   503→          ) : (
+   504→            <FileText className="h-4 w-4" />
+   505→          )}
+   506→        </div>
+   507→        <div className="flex-1 min-w-0">
+   508→          <div className="flex items-center gap-2 flex-wrap">
+   509→            <span className="text-sm font-medium truncate max-w-[260px]">{doc.filename}</span>
+   510→            <Badge variant="outline" className={cn('text-[10px] py-0 px-1.5', typeBadge.cls)}>
+   511→              {typeBadge.label}
+   512→            </Badge>
+   513→          </div>
+   514→          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+   515→            <Badge variant="outline" className={cn('text-[10px] py-0 px-1.5', statusBadge.cls)}>
+   516→              {doc.status === 'parsed' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+   517→              {doc.status === 'error' && <FileWarning className="h-3 w-3 mr-1" />}
+   518→              {doc.status === 'pending' && <Spinner className="h-3 w-3 mr-1" />}
+   519→              {statusBadge.label}
+   520→            </Badge>
+   521→            <span className="text-xs text-muted-foreground truncate">{summaryFor(doc)}</span>
+   522→          </div>
+   523→        </div>
+   524→        <button
+   525→          type="button"
+   526→          onClick={(e) => {
+   527→            e.stopPropagation()
+   528→            onDelete()
+   529→          }}
+   530→          className="shrink-0 h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+   531→          aria-label="Delete document"
+   532→        >
+   533→          <Trash2 className="h-3.5 w-3.5" />
+   534→        </button>
+   535→      </div>
+   536→      {canPreview && !selected && (
+   537→        <div className="absolute top-2 end-2 text-[10px] text-brand opacity-0 group-hover:opacity-100 transition-opacity">
+   538→          click to preview →
+   539→        </div>
+   540→      )}
+   541→    </div>
+   542→  )
+   543→}
+   544→
+   545→function PreviewPanel({
+   546→  doc,
+   547→  applying,
+   548→  onApply,
+   549→  onClose,
+   550→}: {
+   551→  doc: DocListItem
+   552→  applying: boolean
+   553→  onApply: () => void
+   554→  onClose: () => void
+   555→}) {
+   556→  if (doc.type === 'certificate') {
+   557→    const cert = parseParsed<ParsedCert>(doc.parsed)
+   558→    return (
+   559→      <Card className="overflow-hidden">
+   560→        <CardHeader className="pb-2 flex-row items-center justify-between">
+   561→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   562→            <Award className="h-4 w-4 text-amber-500" /> Certificate preview
+   563→          </CardTitle>
+   564→          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
+   565→            <X className="h-4 w-4" />
+   566→          </Button>
+   567→        </CardHeader>
+   568→        <CardContent className="space-y-3">
+   569→          {cert ? (
+   570→            <div className="space-y-2">
+   571→              <Field icon={<Award className="h-3.5 w-3.5" />} label="Certificate" value={cert.name} />
+   572→              <Field icon={<BadgeCheck className="h-3.5 w-3.5" />} label="Issuer" value={cert.issuer} />
+   573→              <Field icon={<CheckCircle2 className="h-3.5 w-3.5" />} label="Date" value={cert.date} />
+   574→              <Field icon={<User className="h-3.5 w-3.5" />} label="Holder" value={cert.holderName} />
+   575→              {cert.credentialId && (
+   576→                <Field icon={<FileText className="h-3.5 w-3.5" />} label="Credential ID" value={cert.credentialId} />
+   577→              )}
+   578→            </div>
+   579→          ) : (
+   580→            <p className="text-xs text-muted-foreground">No structured data available.</p>
+   581→          )}
+   582→          <div className="text-xs text-muted-foreground pt-1 border-t">{doc.filename}</div>
+   583→        </CardContent>
+   584→      </Card>
+   585→    )
+   586→  }
+   587→
+   588→  const r = parseParsed<ParsedResume>(doc.parsed)
+   589→  return (
+   590→    <Card className="overflow-hidden">
+   591→      <CardHeader className="pb-2 flex-row items-center justify-between">
+   592→        <CardTitle className="text-sm font-medium flex items-center gap-2">
+   593→          <FileScan className="h-4 w-4 text-brand" /> Extracted data
+   594→        </CardTitle>
+   595→        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onClose}>
+   596→          <X className="h-4 w-4" />
+   597→        </Button>
+   598→      </CardHeader>
+   599→      <CardContent className="space-y-4">
+   600→        {r ? (
+   601→          <>
+   602→            {/* Identity */}
+   603→            <div className="rounded-lg bg-brand-soft/40 border border-brand/20 p-3">
+   604→              <div className="text-sm font-semibold flex items-center gap-2">
+   605→                <User className="h-4 w-4 text-brand" />
+   606→                {r.contact?.name || 'Unknown candidate'}
+   607→              </div>
+   608→              <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-muted-foreground">
+   609→                {r.contact?.email && (
+   610→                  <div className="flex items-center gap-1.5">
+   611→                    <Mail className="h-3 w-3" /> {r.contact.email}
+   612→                  </div>
+   613→                )}
+   614→                {r.contact?.phone && (
+   615→                  <div className="flex items-center gap-1.5">
+   616→                    <Phone className="h-3 w-3" /> {r.contact.phone}
+   617→                  </div>
+   618→                )}
+   619→                {r.contact?.location && (
+   620→                  <div className="flex items-center gap-1.5">
+   621→                    <MapPin className="h-3 w-3" /> {r.contact.location}
+   622→                  </div>
+   623→                )}
+   624→                {r.contact?.linkedin && (
+   625→                  <div className="flex items-center gap-1.5 truncate">
+   626→                    <Linkedin className="h-3 w-3 shrink-0" />
+   627→                    <span className="truncate">{r.contact.linkedin}</span>
+   628→                  </div>
+   629→                )}
+   630→                {r.contact?.website && (
+   631→                  <div className="flex items-center gap-1.5 truncate">
+   632→                    <Globe className="h-3 w-3 shrink-0" />
+   633→                    <span className="truncate">{r.contact.website}</span>
+   634→                  </div>
+   635→                )}
+   636→              </div>
+   637→            </div>
+   638→
+   639→            {/* Summary */}
+   640→            {r.summary && (
+   641→              <Section icon={<FileText className="h-3.5 w-3.5" />} title="Professional summary">
+   642→                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
+   643→                  {r.summary}
+   644→                </p>
+   645→              </Section>
+   646→            )}
+   647→
+   648→            {/* Stats */}
+   649→            <div className="grid grid-cols-3 gap-2">
+   650→              <Stat icon={<Briefcase className="h-3.5 w-3.5" />} label="Experience" value={r.experience?.length ?? 0} />
+   651→              <Stat icon={<GraduationCap className="h-3.5 w-3.5" />} label="Education" value={r.education?.length ?? 0} />
+   652→              <Stat icon={<Wrench className="h-3.5 w-3.5" />} label="Skills" value={r.skills?.length ?? 0} />
+   653→            </div>
+   654→
+   655→            {/* Experience */}
+   656→            {r.experience && r.experience.length > 0 && (
+   657→              <Section icon={<Briefcase className="h-3.5 w-3.5" />} title="Experience">
+   658→                <div className="space-y-2">
+   659→                  {r.experience.slice(0, 3).map((e, i) => (
+   660→                    <div key={i} className="rounded-md border p-2">
+   661→                      <div className="text-xs font-medium">
+   662→                        {e.title || 'Role'}
+   663→                        {e.company && <span className="text-muted-foreground"> · {e.company}</span>}
+   664→                      </div>
+   665→                      <div className="text-[10px] text-muted-foreground mt-0.5">
+   666→                        {[e.startDate, e.endDate].filter(Boolean).join(' — ')}
+   667→                        {e.location ? ` · ${e.location}` : ''}
+   668→                      </div>
+   669→                      {e.bullets && e.bullets.length > 0 && (
+   670→                        <ul className="mt-1 space-y-0.5">
+   671→                          {e.bullets.slice(0, 2).map((b, j) => (
+   672→                            <li key={j} className="text-[11px] text-muted-foreground flex gap-1">
+   673→                              <span className="text-brand">•</span>
+   674→                              <span className="line-clamp-1">{b}</span>
+   675→                            </li>
+   676→                          ))}
+   677→                        </ul>
+   678→                      )}
+   679→                    </div>
+   680→                  ))}
+   681→                  {r.experience.length > 3 && (
+   682→                    <div className="text-[10px] text-muted-foreground text-center pt-1">
+   683→                      +{r.experience.length - 3} more
+   684→                    </div>
+   685→                  )}
+   686→                </div>
+   687→              </Section>
+   688→            )}
+   689→
+   690→            {/* Skills */}
+   691→            {r.skills && r.skills.length > 0 && (
+   692→              <Section icon={<Wrench className="h-3.5 w-3.5" />} title="Skills">
+   693→                <div className="flex flex-wrap gap-1.5">
+   694→                  {r.skills.slice(0, 24).map((s, i) => (
+   695→                    <Badge key={i} variant="outline" className="bg-brand/10 text-brand border-brand/30 text-[10px]">
+   696→                      {s}
+   697→                    </Badge>
+   698→                  ))}
+   699→                  {r.skills.length > 24 && (
+   700→                    <span className="text-[10px] text-muted-foreground self-center">
+   701→                      +{r.skills.length - 24}
+   702→                    </span>
+   703→                  )}
+   704→                </div>
+   705→              </Section>
+   706→            )}
+   707→
+   708→            {/* Certifications */}
+   709→            {r.certifications && r.certifications.length > 0 && (
+   710→              <Section icon={<BadgeCheck className="h-3.5 w-3.5" />} title="Certifications">
+   711→                <ul className="space-y-1">
+   712→                  {r.certifications.map((c, i) => (
+   713→                    <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+   714→                      <span className="text-amber-500">•</span>
+   715→                      <span>
+   716→                        <span className="font-medium text-foreground">{c.name}</span>
+   717→                        {c.issuer && ` — ${c.issuer}`}
+   718→                        {c.date && ` · ${c.date}`}
+   719→                      </span>
+   720→                    </li>
+   721→                  ))}
+   722→                </ul>
+   723→              </Section>
+   724→            )}
+   725→
+   726→            {/* Projects */}
+   727→            {r.projects && r.projects.length > 0 && (
+   728→              <Section icon={<FolderGit2 className="h-3.5 w-3.5" />} title="Projects">
+   729→                <ul className="space-y-1">
+   730→                  {r.projects.slice(0, 4).map((p, i) => (
+   731→                    <li key={i} className="text-xs text-muted-foreground">
+   732→                      <span className="font-medium text-foreground">{p.name}</span>
+   733→                      {p.description && <span> — {p.description}</span>}
+   734→                    </li>
+   735→                  ))}
+   736→                </ul>
+   737→              </Section>
+   738→            )}
+   739→
+   740→            {/* Apply action */}
+   741→            <div className="pt-2 border-t">
+   742→              <Button
+   743→                onClick={onApply}
+   744→                disabled={applying}
+   745→                className="w-full bg-brand text-brand-foreground hover:bg-brand/90 rounded-full"
+   746→              >
+   747→                {applying ? (
+   748→                  <>
+   749→                    <Spinner /> Applying…
+   750→                  </>
+   751→                ) : (
+   752→                  <>
+   753→                    <Sparkles className="h-4 w-4" /> Apply to my profile
+   754→                  </>
+   755→                )}
+   756→              </Button>
+   757→              <p className="text-[10px] text-muted-foreground text-center mt-2">
+   758→                Adds skills to your strengths, sets a target role and creates a new resume.
+   759→              </p>
+   760→            </div>
+   761→          </>
+   762→        ) : (
+   763→          <p className="text-xs text-muted-foreground">
+   764→            {doc.status === 'error'
+   765→              ? 'This document could not be parsed. Try uploading a clearer image or a different file.'
+   766→              : 'No structured data available.'}
+   767→          </p>
+   768→        )}
+   769→      </CardContent>
+   770→    </Card>
+   771→  )
+   772→}
+   773→
+   774→function Section({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
+   775→  return (
+   776→    <div>
+   777→      <div className="flex items-center gap-1.5 text-xs font-medium mb-1.5 text-foreground">
+   778→        <span className="text-brand">{icon}</span>
+   779→        {title}
+   780→      </div>
+   781→      {children}
+   782→    </div>
+   783→  )
+   784→}
+   785→
+   786→function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+   787→  return (
+   788→    <div className="rounded-lg border p-2 text-center">
+   789→      <div className="flex items-center justify-center text-brand mb-0.5">{icon}</div>
+   790→      <div className="text-base font-bold leading-none">{value}</div>
+   791→      <div className="text-[10px] text-muted-foreground mt-0.5">{label}</div>
+   792→    </div>
+   793→  )
+   794→}
+   795→
+   796→function Field({ icon, label, value }: { icon: ReactNode; label: string; value?: string }) {
+   797→  if (!value) return null
+   798→  return (
+   799→    <div className="flex items-start gap-2 text-xs">
+   800→      <span className="text-muted-foreground mt-0.5">{icon}</span>
+   801→      <div>
+   802→        <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
+   803→        <div className="font-medium">{value}</div>
+   804→      </div>
+   805→    </div>
+   806→  )
+   807→}
+   808→

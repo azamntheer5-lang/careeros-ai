@@ -10,7 +10,6 @@ import { Topbar } from '@/components/careeros/topbar'
 import { Footer } from '@/components/careeros/footer'
 import { LoadingScreen } from '@/components/careeros/loading'
 import { CommandPalette } from '@/components/careeros/command-palette'
-import { Onboarding } from '@/components/careeros/onboarding'
 import { AssessmentOnboarding } from '@/components/careeros/assessment-onboarding'
 import { FloatingAssistant } from '@/components/careeros/floating-assistant'
 
@@ -121,7 +120,6 @@ export default function Page() {
       </div>
       <Footer />
       <CommandPalette />
-      <Onboarding />
       <AssessmentOnboarding />
       <FloatingAssistant />
     </div>

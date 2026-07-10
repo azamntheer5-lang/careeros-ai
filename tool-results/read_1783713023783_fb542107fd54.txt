@@ -1,0 +1,1308 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState, useCallback } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→import { LoadingScreen } from '@/components/careeros/loading'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Progress } from '@/components/ui/progress'
+    16→import {
+    17→  Tabs,
+    18→  TabsList,
+    19→  TabsTrigger,
+    20→  TabsContent,
+    21→} from '@/components/ui/tabs'
+    22→import {
+    23→  Table,
+    24→  TableBody,
+    25→  TableCell,
+    26→  TableHead,
+    27→  TableHeader,
+    28→  TableRow,
+    29→} from '@/components/ui/table'
+    30→import {
+    31→  Select,
+    32→  SelectContent,
+    33→  SelectItem,
+    34→  SelectTrigger,
+    35→  SelectValue,
+    36→} from '@/components/ui/select'
+    37→import {
+    38→  Dialog,
+    39→  DialogContent,
+    40→  DialogHeader,
+    41→  DialogTitle,
+    42→  DialogDescription,
+    43→  DialogFooter,
+    44→  DialogClose,
+    45→} from '@/components/ui/dialog'
+    46→import { ScrollArea } from '@/components/ui/scroll-area'
+    47→import {
+    48→  Building2,
+    49→  Users,
+    50→  TrendingUp,
+    51→  Layers,
+    52→  Award,
+    53→  Plus,
+    54→  ArrowUpRight,
+    55→  Sparkles,
+    56→  Target,
+    57→  GitBranch,
+    58→  Crown,
+    59→} from 'lucide-react'
+    60→import {
+    61→  ResponsiveContainer,
+    62→  BarChart,
+    63→  Bar,
+    64→  XAxis,
+    65→  YAxis,
+    66→  Tooltip,
+    67→  CartesianGrid,
+    68→  PieChart,
+    69→  Pie,
+    70→  Cell,
+    71→} from 'recharts'
+    72→
+    73→// --- Types ------------------------------------------------------------------
+    74→
+    75→type TenantDTO = {
+    76→  id: string
+    77→  name: string
+    78→  type: string
+    79→  domain: string | null
+    80→  plan: string
+    81→  seats: number
+    82→  createdAt: string
+    83→}
+    84→
+    85→type DepartmentDTO = {
+    86→  id: string
+    87→  name: string
+    88→  headcount: number
+    89→}
+    90→
+    91→type EmployeeDTO = {
+    92→  id: string
+    93→  name: string
+    94→  email: string
+    95→  role: string | null
+    96→  departmentId: string | null
+    97→  departmentName: string | null
+    98→  level: string | null
+    99→  skills: string[]
+   100→  goals: string[]
+   101→  growthScore: number
+   102→}
+   103→
+   104→type EnterpriseStats = {
+   105→  totalEmployees: number
+   106→  totalDepartments: number
+   107→  avgGrowth: number
+   108→  topSkill: string | null
+   109→}
+   110→
+   111→type EnterpriseResponse = {
+   112→  tenant: TenantDTO
+   113→  departments: DepartmentDTO[]
+   114→  employees: EmployeeDTO[]
+   115→  stats: EnterpriseStats
+   116→}
+   117→
+   118→type AnalyticsResponse = {
+   119→  topSkills: { skill: string; count: number }[]
+   120→  growthDistribution: { bucket: string; count: number }[]
+   121→  departmentHeadcount: { name: string; headcount: number }[]
+   122→  levelDistribution: { level: string; count: number }[]
+   123→  mobilityCandidates: {
+   124→    employeeId: string
+   125→    name: string
+   126→    role: string | null
+   127→    departmentName: string | null
+   128→    growthScore: number
+   129→    suggestedNextRole: string
+   130→    readinessScore: number
+   131→    matchedSkills: string[]
+   132→  }[]
+   133→}
+   134→
+   135→// --- Constants --------------------------------------------------------------
+   136→
+   137→const LEVELS = ['Junior', 'Mid', 'Senior', 'Staff', 'Lead'] as const
+   138→
+   139→const LEVEL_BADGE_CLASS: Record<string, string> = {
+   140→  Junior: 'border-sky-500/40 text-sky-600 bg-sky-500/5',
+   141→  Mid: 'border-brand/40 text-brand bg-brand/5',
+   142→  Senior: 'border-violet-500/40 text-violet-600 bg-violet-500/5',
+   143→  Staff: 'border-amber-500/40 text-amber-600 bg-amber-500/5',
+   144→  Lead: 'border-rose-500/40 text-rose-600 bg-rose-500/5',
+   145→}
+   146→
+   147→const PIE_COLORS = [
+   148→  'oklch(0.7 0.15 162)',
+   149→  'oklch(0.7 0.13 200)',
+   150→  'oklch(0.75 0.15 80)',
+   151→  'oklch(0.65 0.2 300)',
+   152→  'oklch(0.68 0.2 30)',
+   153→  'oklch(0.6 0.1 240)',
+   154→]
+   155→
+   156→const DEPT_COLORS: Record<string, string> = {
+   157→  Engineering: 'oklch(0.7 0.15 162)',
+   158→  Product: 'oklch(0.7 0.13 200)',
+   159→  Design: 'oklch(0.75 0.15 80)',
+   160→}
+   161→
+   162→const TOOLTIP_STYLE = {
+   163→  background: 'var(--card)',
+   164→  border: '1px solid var(--border)',
+   165→  borderRadius: 10,
+   166→  fontSize: 12,
+   167→}
+   168→
+   169→// --- Main module ------------------------------------------------------------
+   170→
+   171→export function EnterpriseModule() {
+   172→  const { t } = useApp()
+   173→  const { toast } = useToast()
+   174→  const [data, setData] = useState<EnterpriseResponse | null>(null)
+   175→  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null)
+   176→  const [addOpen, setAddOpen] = useState(false)
+   177→  const [activeEmployee, setActiveEmployee] = useState<EmployeeDTO | null>(null)
+   178→  const [adding, setAdding] = useState(false)
+   179→
+   180→  // Form state for "Add Employee"
+   181→  const [form, setForm] = useState({
+   182→    name: '',
+   183→    email: '',
+   184→    role: '',
+   185→    departmentId: '',
+   186→    level: 'Mid',
+   187→    skills: '',
+   188→    goals: '',
+   189→  })
+   190→
+   191→  const load = useCallback(() => {
+   192→    api<EnterpriseResponse>('/api/enterprise')
+   193→      .then(setData)
+   194→      .catch(() => {
+   195→        toast({
+   196→          title: 'Failed to load enterprise data',
+   197→          variant: 'destructive',
+   198→        })
+   199→      })
+   200→    api<AnalyticsResponse>('/api/enterprise/analytics')
+   201→      .then(setAnalytics)
+   202→      .catch(() => {})
+   203→  }, [toast])
+   204→
+   205→  useEffect(() => {
+   206→    load()
+   207→  }, [load])
+   208→
+   209→  const handleAdd = async () => {
+   210→    if (!form.name.trim() || !form.email.trim()) {
+   211→      toast({
+   212→        title: 'Name and email are required',
+   213→        variant: 'destructive',
+   214→      })
+   215→      return
+   216→    }
+   217→    setAdding(true)
+   218→    try {
+   219→      await api('/api/enterprise/employees', {
+   220→        method: 'POST',
+   221→        body: {
+   222→          name: form.name.trim(),
+   223→          email: form.email.trim(),
+   224→          role: form.role.trim() || undefined,
+   225→          departmentId: form.departmentId || undefined,
+   226→          level: form.level,
+   227→          skills: form.skills
+   228→            .split(',')
+   229→            .map((s) => s.trim())
+   230→            .filter(Boolean),
+   231→          goals: form.goals
+   232→            .split(',')
+   233→            .map((s) => s.trim())
+   234→            .filter(Boolean),
+   235→          growthScore: 50,
+   236→        },
+   237→      })
+   238→      toast({
+   239→        title: 'Employee added',
+   240→        description: `${form.name} is now part of the org.`,
+   241→      })
+   242→      setForm({
+   243→        name: '',
+   244→        email: '',
+   245→        role: '',
+   246→        departmentId: '',
+   247→        level: 'Mid',
+   248→        skills: '',
+   249→        goals: '',
+   250→      })
+   251→      setAddOpen(false)
+   252→      load()
+   253→    } catch (e) {
+   254→      toast({
+   255→        title: 'Could not add employee',
+   256→        description: (e as Error).message,
+   257→        variant: 'destructive',
+   258→      })
+   259→    } finally {
+   260→      setAdding(false)
+   261→    }
+   262→  }
+   263→
+   264→  if (!data) return <LoadingScreen label="Loading enterprise workspace…" />
+   265→
+   266→  const { tenant, departments, employees, stats } = data
+   267→
+   268→  return (
+   269→    <div>
+   270→      <ModuleHeader
+   271→        title={t('enterpriseTitle')}
+   272→        subtitle={t('enterpriseSub')}
+   273→        icon={Building2}
+   274→        actions={
+   275→          <Button onClick={() => setAddOpen(true)} className="gap-1.5">
+   276→            <Plus className="h-4 w-4" /> Add Employee
+   277→          </Button>
+   278→        }
+   279→      />
+   280→
+   281→      <Tabs defaultValue="overview" className="w-full">
+   282→        <TabsList className="mb-4 flex-wrap h-auto">
+   283→          <TabsTrigger value="overview">Overview</TabsTrigger>
+   284→          <TabsTrigger value="employees">Employees</TabsTrigger>
+   285→          <TabsTrigger value="analytics">Skill Analytics</TabsTrigger>
+   286→          <TabsTrigger value="mobility">Internal Mobility</TabsTrigger>
+   287→        </TabsList>
+   288→
+   289→        {/* ---- Overview ---- */}
+   290→        <TabsContent value="overview" className="mt-0">
+   291→          <OverviewTab
+   292→            tenant={tenant}
+   293→            departments={departments}
+   294→            stats={stats}
+   295→          />
+   296→        </TabsContent>
+   297→
+   298→        {/* ---- Employees ---- */}
+   299→        <TabsContent value="employees" className="mt-0">
+   300→          <Card>
+   301→            <CardHeader className="pb-2">
+   302→              <CardTitle className="text-sm font-medium flex items-center gap-2">
+   303→                <Users className="h-4 w-4 text-brand" /> Team Directory
+   304→              </CardTitle>
+   305→            </CardHeader>
+   306→            <CardContent className="pt-2">
+   307→              <div className="max-h-[28rem] overflow-y-auto pe-1">
+   308→                <Table>
+   309→                  <TableHeader>
+   310→                    <TableRow>
+   311→                      <TableHead>Employee</TableHead>
+   312→                      <TableHead>Role</TableHead>
+   313→                      <TableHead>Department</TableHead>
+   314→                      <TableHead>Level</TableHead>
+   315→                      <TableHead className="w-32">Growth</TableHead>
+   316→                      <TableHead>Skills</TableHead>
+   317→                    </TableRow>
+   318→                  </TableHeader>
+   319→                  <TableBody>
+   320→                    {employees.length === 0 ? (
+   321→                      <TableRow>
+   322→                        <TableCell
+   323→                          colSpan={6}
+   324→                          className="text-center text-xs text-muted-foreground py-8"
+   325→                        >
+   326→                          {t('empty')}
+   327→                        </TableCell>
+   328→                      </TableRow>
+   329→                    ) : (
+   330→                      employees.map((emp) => (
+   331→                        <TableRow
+   332→                          key={emp.id}
+   333→                          className="cursor-pointer hover:bg-brand/5 transition-colors"
+   334→                          onClick={() => setActiveEmployee(emp)}
+   335→                        >
+   336→                          <TableCell>
+   337→                            <div className="flex flex-col">
+   338→                              <span className="font-medium text-sm">
+   339→                                {emp.name}
+   340→                              </span>
+   341→                              <span className="text-[11px] text-muted-foreground">
+   342→                                {emp.email}
+   343→                              </span>
+   344→                            </div>
+   345→                          </TableCell>
+   346→                          <TableCell className="text-xs">
+   347→                            {emp.role || '—'}
+   348→                          </TableCell>
+   349→                          <TableCell>
+   350→                            {emp.departmentName ? (
+   351→                              <Badge
+   352→                                variant="outline"
+   353→                                className="text-[10px] h-5"
+   354→                              >
+   355→                                {emp.departmentName}
+   356→                              </Badge>
+   357→                            ) : (
+   358→                              <span className="text-xs text-muted-foreground">
+   359→                                —
+   360→                              </span>
+   361→                            )}
+   362→                          </TableCell>
+   363→                          <TableCell>
+   364→                            {emp.level ? (
+   365→                              <Badge
+   366→                                variant="outline"
+   367→                                className={`text-[10px] h-5 ${
+   368→                                  LEVEL_BADGE_CLASS[emp.level] || ''
+   369→                                }`}
+   370→                              >
+   371→                                {emp.level}
+   372→                              </Badge>
+   373→                            ) : (
+   374→                              <span className="text-xs text-muted-foreground">
+   375→                                —
+   376→                              </span>
+   377→                            )}
+   378→                          </TableCell>
+   379→                          <TableCell>
+   380→                            <div className="flex items-center gap-2">
+   381→                              <Progress
+   382→                                value={emp.growthScore}
+   383→                                className="h-1.5 flex-1"
+   384→                              />
+   385→                              <span className="text-[11px] font-medium tabular-nums w-7 text-right">
+   386→                                {emp.growthScore}
+   387→                              </span>
+   388→                            </div>
+   389→                          </TableCell>
+   390→                          <TableCell>
+   391→                            <div className="flex flex-wrap gap-1 max-w-[14rem]">
+   392→                              {emp.skills.slice(0, 3).map((s) => (
+   393→                                <span
+   394→                                  key={s}
+   395→                                  className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+   396→                                >
+   397→                                  {s}
+   398→                                </span>
+   399→                              ))}
+   400→                              {emp.skills.length > 3 && (
+   401→                                <span className="text-[10px] text-muted-foreground">
+   402→                                  +{emp.skills.length - 3}
+   403→                                </span>
+   404→                              )}
+   405→                            </div>
+   406→                          </TableCell>
+   407→                        </TableRow>
+   408→                      ))
+   409→                    )}
+   410→                  </TableBody>
+   411→                </Table>
+   412→              </div>
+   413→              <p className="text-[11px] text-muted-foreground mt-3">
+   414→                Click any row to view skills, goals, and a suggested growth plan.
+   415→              </p>
+   416→            </CardContent>
+   417→          </Card>
+   418→        </TabsContent>
+   419→
+   420→        {/* ---- Skill Analytics ---- */}
+   421→        <TabsContent value="analytics" className="mt-0">
+   422→          <SkillAnalyticsTab analytics={analytics} />
+   423→        </TabsContent>
+   424→
+   425→        {/* ---- Internal Mobility ---- */}
+   426→        <TabsContent value="mobility" className="mt-0">
+   427→          <MobilityTab analytics={analytics} onSelectEmployee={(id) => {
+   428→            const emp = employees.find((e) => e.id === id)
+   429→            if (emp) setActiveEmployee(emp)
+   430→          }} />
+   431→        </TabsContent>
+   432→      </Tabs>
+   433→
+   434→      {/* ---- Add Employee Dialog ---- */}
+   435→      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+   436→        <DialogContent className="sm:max-w-lg">
+   437→          <DialogHeader>
+   438→            <DialogTitle>Add Employee</DialogTitle>
+   439→            <DialogDescription>
+   440→              Add a new person to {tenant.name}. They&apos;ll appear in your directory and analytics.
+   441→            </DialogDescription>
+   442→          </DialogHeader>
+   443→
+   444→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   445→            <div className="space-y-1.5">
+   446→              <Label htmlFor="emp-name">Name</Label>
+   447→              <Input
+   448→                id="emp-name"
+   449→                value={form.name}
+   450→                onChange={(e) => setForm({ ...form, name: e.target.value })}
+   451→                placeholder="Jane Doe"
+   452→              />
+   453→            </div>
+   454→            <div className="space-y-1.5">
+   455→              <Label htmlFor="emp-email">Email</Label>
+   456→              <Input
+   457→                id="emp-email"
+   458→                type="email"
+   459→                value={form.email}
+   460→                onChange={(e) => setForm({ ...form, email: e.target.value })}
+   461→                placeholder="jane@acme.com"
+   462→              />
+   463→            </div>
+   464→            <div className="space-y-1.5">
+   465→              <Label htmlFor="emp-role">Role</Label>
+   466→              <Input
+   467→                id="emp-role"
+   468→                value={form.role}
+   469→                onChange={(e) => setForm({ ...form, role: e.target.value })}
+   470→                placeholder="Software Engineer"
+   471→              />
+   472→            </div>
+   473→            <div className="space-y-1.5">
+   474→              <Label>Department</Label>
+   475→              <Select
+   476→                value={form.departmentId}
+   477→                onValueChange={(v) => setForm({ ...form, departmentId: v })}
+   478→              >
+   479→                <SelectTrigger className="w-full">
+   480→                  <SelectValue placeholder="Select department" />
+   481→                </SelectTrigger>
+   482→                <SelectContent>
+   483→                  {departments.map((d) => (
+   484→                    <SelectItem key={d.id} value={d.id}>
+   485→                      {d.name}
+   486→                    </SelectItem>
+   487→                  ))}
+   488→                </SelectContent>
+   489→              </Select>
+   490→            </div>
+   491→            <div className="space-y-1.5 sm:col-span-2">
+   492→              <Label>Level</Label>
+   493→              <Select
+   494→                value={form.level}
+   495→                onValueChange={(v) => setForm({ ...form, level: v })}
+   496→              >
+   497→                <SelectTrigger className="w-full">
+   498→                  <SelectValue />
+   499→                </SelectTrigger>
+   500→                <SelectContent>
+   501→                  {LEVELS.map((lvl) => (
+   502→                    <SelectItem key={lvl} value={lvl}>
+   503→                      {lvl}
+   504→                    </SelectItem>
+   505→                  ))}
+   506→                </SelectContent>
+   507→              </Select>
+   508→            </div>
+   509→            <div className="space-y-1.5 sm:col-span-2">
+   510→              <Label htmlFor="emp-skills">Skills (comma separated)</Label>
+   511→              <Input
+   512→                id="emp-skills"
+   513→                value={form.skills}
+   514→                onChange={(e) => setForm({ ...form, skills: e.target.value })}
+   515→                placeholder="TypeScript, React, System Design"
+   516→              />
+   517→            </div>
+   518→            <div className="space-y-1.5 sm:col-span-2">
+   519→              <Label htmlFor="emp-goals">Goals (comma separated)</Label>
+   520→              <Input
+   521→                id="emp-goals"
+   522→                value={form.goals}
+   523→                onChange={(e) => setForm({ ...form, goals: e.target.value })}
+   524→                placeholder="Lead a team, Ship a 0→1 product"
+   525→              />
+   526→            </div>
+   527→          </div>
+   528→
+   529→          <DialogFooter>
+   530→            <DialogClose asChild>
+   531→              <Button variant="outline">{t('cancel')}</Button>
+   532→            </DialogClose>
+   533→            <Button onClick={handleAdd} disabled={adding}>
+   534→              {adding ? 'Adding…' : 'Add Employee'}
+   535→            </Button>
+   536→          </DialogFooter>
+   537→        </DialogContent>
+   538→      </Dialog>
+   539→
+   540→      {/* ---- Employee Detail Dialog ---- */}
+   541→      <EmployeeDetailDialog
+   542→        employee={activeEmployee}
+   543→        onClose={() => setActiveEmployee(null)}
+   544→      />
+   545→    </div>
+   546→  )
+   547→}
+   548→
+   549→// --- Overview sub-component -------------------------------------------------
+   550→
+   551→function OverviewTab({
+   552→  tenant,
+   553→  departments,
+   554→  stats,
+   555→}: {
+   556→  tenant: TenantDTO
+   557→  departments: DepartmentDTO[]
+   558→  stats: EnterpriseStats
+   559→}) {
+   560→  const kpis = [
+   561→    {
+   562→      label: 'Total Employees',
+   563→      value: stats.totalEmployees.toString(),
+   564→      icon: Users,
+   565→      delta: `${tenant.seats} seats`,
+   566→      color: 'var(--brand)',
+   567→    },
+   568→    {
+   569→      label: 'Departments',
+   570→      value: stats.totalDepartments.toString(),
+   571→      icon: Layers,
+   572→      delta: 'org units',
+   573→      color: 'oklch(0.7 0.13 200)',
+   574→    },
+   575→    {
+   576→      label: 'Avg. Growth Score',
+   577→      value: stats.avgGrowth.toString(),
+   578→      icon: TrendingUp,
+   579→      delta: stats.avgGrowth >= 75 ? 'high potential' : 'developing',
+   580→      color: 'oklch(0.75 0.15 80)',
+   581→    },
+   582→    {
+   583→      label: 'Top Skill',
+   584→      value: stats.topSkill ?? '—',
+   585→      icon: Award,
+   586→      delta: 'org-wide',
+   587→      color: 'oklch(0.65 0.2 30)',
+   588→    },
+   589→  ]
+   590→
+   591→  return (
+   592→    <div className="space-y-4">
+   593→      {/* Tenant info + KPIs */}
+   594→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   595→        <motion.div
+   596→          initial={{ opacity: 0, y: 10 }}
+   597→          animate={{ opacity: 1, y: 0 }}
+   598→        >
+   599→          <Card className="h-full overflow-hidden">
+   600→            <CardContent className="p-0">
+   601→              <div className="bg-gradient-to-br from-brand/15 via-brand/5 to-transparent p-5 border-b">
+   602→                <div className="flex items-start justify-between">
+   603→                  <div>
+   604→                    <div className="flex items-center gap-2">
+   605→                      <div className="h-10 w-10 rounded-xl bg-brand-soft text-brand ring-1 ring-brand/20 flex items-center justify-center">
+   606→                        <Building2 className="h-5 w-5" />
+   607→                      </div>
+   608→                      <div>
+   609→                        <h3 className="font-semibold text-lg leading-tight">
+   610→                          {tenant.name}
+   611→                        </h3>
+   612→                        <p className="text-[11px] text-muted-foreground">
+   613→                          {tenant.domain ?? 'No domain set'}
+   614→                        </p>
+   615→                      </div>
+   616→                    </div>
+   617→                  </div>
+   618→                  <Badge className="border-brand/30 text-brand bg-brand-soft/40 capitalize">
+   619→                    {tenant.type}
+   620→                  </Badge>
+   621→                </div>
+   622→              </div>
+   623→              <div className="grid grid-cols-3 divide-x">
+   624→                <div className="p-3 text-center">
+   625→                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   626→                    Plan
+   627→                  </div>
+   628→                  <div className="text-sm font-semibold capitalize mt-0.5">
+   629→                    {tenant.plan}
+   630→                  </div>
+   631→                </div>
+   632→                <div className="p-3 text-center">
+   633→                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   634→                    Seats
+   635→                  </div>
+   636→                  <div className="text-sm font-semibold mt-0.5">
+   637→                    {tenant.seats}
+   638→                  </div>
+   639→                </div>
+   640→                <div className="p-3 text-center">
+   641→                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+   642→                    Joined
+   643→                  </div>
+   644→                  <div className="text-sm font-semibold mt-0.5">
+   645→                    {new Date(tenant.createdAt).toLocaleDateString(undefined, {
+   646→                      month: 'short',
+   647→                      year: 'numeric',
+   648→                    })}
+   649→                  </div>
+   650→                </div>
+   651→              </div>
+   652→            </CardContent>
+   653→          </Card>
+   654→        </motion.div>
+   655→
+   656→        <div className="lg:col-span-2 grid grid-cols-2 lg:grid-cols-4 gap-3">
+   657→          {kpis.map((k, i) => {
+   658→            const Icon = k.icon
+   659→            return (
+   660→              <motion.div
+   661→                key={k.label}
+   662→                initial={{ opacity: 0, y: 10 }}
+   663→                animate={{ opacity: 1, y: 0 }}
+   664→                transition={{ delay: 0.05 + i * 0.05 }}
+   665→              >
+   666→                <Card className="h-full">
+   667→                  <CardContent className="p-4">
+   668→                    <div
+   669→                      className="h-8 w-8 rounded-lg flex items-center justify-center mb-3"
+   670→                      style={{
+   671→                        backgroundColor: `color-mix(in oklch, ${k.color} 14%, transparent)`,
+   672→                        color: k.color,
+   673→                      }}
+   674→                    >
+   675→                      <Icon className="h-4 w-4" />
+   676→                    </div>
+   677→                    <p className="text-[11px] text-muted-foreground font-medium">
+   678→                      {k.label}
+   679→                    </p>
+   680→                    <p className="text-xl font-semibold tracking-tight mt-0.5 truncate">
+   681→                      {k.value}
+   682→                    </p>
+   683→                    <p className="text-[10px] text-brand font-medium mt-0.5">
+   684→                      {k.delta}
+   685→                    </p>
+   686→                  </CardContent>
+   687→                </Card>
+   688→              </motion.div>
+   689→            )
+   690→          })}
+   691→        </div>
+   692→      </div>
+   693→
+   694→      {/* Department breakdown */}
+   695→      <Card>
+   696→        <CardHeader className="pb-2">
+   697→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   698→            <GitBranch className="h-4 w-4 text-brand" /> Department Breakdown
+   699→          </CardTitle>
+   700→        </CardHeader>
+   701→        <CardContent className="pt-2">
+   702→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   703→            {departments.map((d, i) => {
+   704→              const color =
+   705→                DEPT_COLORS[d.name] || PIE_COLORS[i % PIE_COLORS.length]
+   706→              return (
+   707→                <motion.div
+   708→                  key={d.id}
+   709→                  initial={{ opacity: 0, y: 8 }}
+   710→                  animate={{ opacity: 1, y: 0 }}
+   711→                  transition={{ delay: i * 0.05 }}
+   712→                  className="rounded-lg border p-4 hover:border-brand/30 transition-colors"
+   713→                >
+   714→                  <div className="flex items-center justify-between mb-2">
+   715→                    <div className="flex items-center gap-2">
+   716→                      <span
+   717→                        className="h-2.5 w-2.5 rounded-full"
+   718→                        style={{ background: color }}
+   719→                      />
+   720→                      <span className="text-sm font-medium">{d.name}</span>
+   721→                    </div>
+   722→                    <Badge
+   723→                      variant="outline"
+   724→                      className="text-[10px] h-5"
+   725→                      style={{
+   726→                        borderColor: `color-mix(in oklch, ${color} 40%, transparent)`,
+   727→                        color,
+   728→                      }}
+   729→                    >
+   730→                      {d.headcount} ppl
+   731→                    </Badge>
+   732→                  </div>
+   733→                  <Progress
+   734→                    value={
+   735→                      stats.totalEmployees
+   736→                        ? (d.headcount / stats.totalEmployees) * 100
+   737→                        : 0
+   738→                    }
+   739→                    className="h-1.5"
+   740→                  />
+   741→                  <p className="text-[10px] text-muted-foreground mt-2">
+   742→                    {stats.totalEmployees
+   743→                      ? Math.round(
+   744→                          (d.headcount / stats.totalEmployees) * 100
+   745→                        )
+   746→                      : 0}
+   747→                    % of org
+   748→                  </p>
+   749→                </motion.div>
+   750→              )
+   751→            })}
+   752→          </div>
+   753→        </CardContent>
+   754→      </Card>
+   755→    </div>
+   756→  )
+   757→}
+   758→
+   759→// --- Skill Analytics sub-component -----------------------------------------
+   760→
+   761→function SkillAnalyticsTab({
+   762→  analytics,
+   763→}: {
+   764→  analytics: AnalyticsResponse | null
+   765→}) {
+   766→  if (!analytics) {
+   767→    return (
+   768→      <Card>
+   769→        <CardContent className="py-12 text-center text-xs text-muted-foreground">
+   770→          Loading analytics…
+   771→        </CardContent>
+   772→      </Card>
+   773→    )
+   774→  }
+   775→
+   776→  const { topSkills, levelDistribution, departmentHeadcount } = analytics
+   777→
+   778→  return (
+   779→    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   780→      {/* Top skills bar chart */}
+   781→      <Card className="lg:col-span-2">
+   782→        <CardHeader className="pb-2">
+   783→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   784→            <Award className="h-4 w-4 text-brand" /> Top Skills Across the Org
+   785→          </CardTitle>
+   786→        </CardHeader>
+   787→        <CardContent className="pt-2">
+   788→          <div className="h-64">
+   789→            {topSkills.length === 0 ? (
+   790→              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+   791→                No skills recorded
+   792→              </div>
+   793→            ) : (
+   794→              <ResponsiveContainer width="100%" height="100%">
+   795→                <BarChart
+   796→                  data={topSkills}
+   797→                  layout="vertical"
+   798→                  margin={{ left: 20, right: 16, top: 8, bottom: 8 }}
+   799→                >
+   800→                  <CartesianGrid
+   801→                    strokeDasharray="3 3"
+   802→                    stroke="var(--border)"
+   803→                    horizontal={false}
+   804→                  />
+   805→                  <XAxis
+   806→                    type="number"
+   807→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   808→                    axisLine={false}
+   809→                    tickLine={false}
+   810→                    allowDecimals={false}
+   811→                  />
+   812→                  <YAxis
+   813→                    type="category"
+   814→                    dataKey="skill"
+   815→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   816→                    axisLine={false}
+   817→                    tickLine={false}
+   818→                    width={110}
+   819→                  />
+   820→                  <Tooltip
+   821→                    contentStyle={TOOLTIP_STYLE}
+   822→                    formatter={(v: number) => [`${v} employees`, 'Have skill']}
+   823→                  />
+   824→                  <Bar
+   825→                    dataKey="count"
+   826→                    fill="var(--brand)"
+   827→                    radius={[0, 4, 4, 0]}
+   828→                  />
+   829→                </BarChart>
+   830→              </ResponsiveContainer>
+   831→            )}
+   832→          </div>
+   833→        </CardContent>
+   834→      </Card>
+   835→
+   836→      {/* Level distribution pie */}
+   837→      <Card>
+   838→        <CardHeader className="pb-2">
+   839→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   840→            <Crown className="h-4 w-4 text-brand" /> Level Distribution
+   841→          </CardTitle>
+   842→        </CardHeader>
+   843→        <CardContent className="pt-2">
+   844→          <div className="h-56">
+   845→            {levelDistribution.length === 0 ? (
+   846→              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+   847→                No data
+   848→              </div>
+   849→            ) : (
+   850→              <ResponsiveContainer width="100%" height="100%">
+   851→                <PieChart>
+   852→                  <Pie
+   853→                    data={levelDistribution}
+   854→                    dataKey="count"
+   855→                    nameKey="level"
+   856→                    cx="50%"
+   857→                    cy="50%"
+   858→                    innerRadius={48}
+   859→                    outerRadius={78}
+   860→                    paddingAngle={3}
+   861→                  >
+   862→                    {levelDistribution.map((_, i) => (
+   863→                      <Cell
+   864→                        key={i}
+   865→                        fill={PIE_COLORS[i % PIE_COLORS.length]}
+   866→                      />
+   867→                    ))}
+   868→                  </Pie>
+   869→                  <Tooltip
+   870→                    contentStyle={TOOLTIP_STYLE}
+   871→                    formatter={(v: number, n: string) => [`${v} employees`, n]}
+   872→                  />
+   873→                </PieChart>
+   874→              </ResponsiveContainer>
+   875→            )}
+   876→          </div>
+   877→          <div className="flex flex-wrap justify-center gap-3 mt-2">
+   878→            {levelDistribution.map((l, i) => (
+   879→              <div
+   880→                key={l.level}
+   881→                className="flex items-center gap-1.5 text-[11px]"
+   882→              >
+   883→                <span
+   884→                  className="h-2 w-2 rounded-full"
+   885→                  style={{
+   886→                    background: PIE_COLORS[i % PIE_COLORS.length],
+   887→                  }}
+   888→                />
+   889→                <span>{l.level}</span>
+   890→                <span className="text-muted-foreground">{l.count}</span>
+   891→              </div>
+   892→            ))}
+   893→          </div>
+   894→        </CardContent>
+   895→      </Card>
+   896→
+   897→      {/* Department headcount bar */}
+   898→      <Card>
+   899→        <CardHeader className="pb-2">
+   900→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   901→            <Layers className="h-4 w-4 text-brand" /> Department Headcount
+   902→          </CardTitle>
+   903→        </CardHeader>
+   904→        <CardContent className="pt-2">
+   905→          <div className="h-56">
+   906→            {departmentHeadcount.length === 0 ? (
+   907→              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+   908→                No data
+   909→              </div>
+   910→            ) : (
+   911→              <ResponsiveContainer width="100%" height="100%">
+   912→                <BarChart
+   913→                  data={departmentHeadcount}
+   914→                  margin={{ left: -16, right: 8, top: 8, bottom: 8 }}
+   915→                >
+   916→                  <CartesianGrid
+   917→                    strokeDasharray="3 3"
+   918→                    stroke="var(--border)"
+   919→                    vertical={false}
+   920→                  />
+   921→                  <XAxis
+   922→                    dataKey="name"
+   923→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   924→                    axisLine={false}
+   925→                    tickLine={false}
+   926→                  />
+   927→                  <YAxis
+   928→                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+   929→                    axisLine={false}
+   930→                    tickLine={false}
+   931→                    allowDecimals={false}
+   932→                  />
+   933→                  <Tooltip
+   934→                    contentStyle={TOOLTIP_STYLE}
+   935→                    formatter={(v: number) => [`${v} employees`, 'Headcount']}
+   936→                  />
+   937→                  <Bar dataKey="headcount" radius={[4, 4, 0, 0]}>
+   938→                    {departmentHeadcount.map((d, i) => (
+   939→                      <Cell
+   940→                        key={i}
+   941→                        fill={
+   942→                          DEPT_COLORS[d.name] ||
+   943→                          PIE_COLORS[i % PIE_COLORS.length]
+   944→                        }
+   945→                      />
+   946→                    ))}
+   947→                  </Bar>
+   948→                </BarChart>
+   949→              </ResponsiveContainer>
+   950→            )}
+   951→          </div>
+   952→        </CardContent>
+   953→      </Card>
+   954→    </div>
+   955→  )
+   956→}
+   957→
+   958→// --- Internal Mobility sub-component ---------------------------------------
+   959→
+   960→function MobilityTab({
+   961→  analytics,
+   962→  onSelectEmployee,
+   963→}: {
+   964→  analytics: AnalyticsResponse | null
+   965→  onSelectEmployee: (id: string) => void
+   966→}) {
+   967→  if (!analytics) {
+   968→    return (
+   969→      <Card>
+   970→        <CardContent className="py-12 text-center text-xs text-muted-foreground">
+   971→          Loading mobility candidates…
+   972→        </CardContent>
+   973→      </Card>
+   974→    )
+   975→  }
+   976→
+   977→  const candidates = analytics.mobilityCandidates
+   978→
+   979→  return (
+   980→    <Card>
+   981→      <CardHeader className="pb-2">
+   982→        <CardTitle className="text-sm font-medium flex items-center gap-2">
+   983→          <ArrowUpRight className="h-4 w-4 text-brand" /> Internal Mobility Candidates
+   984→        </CardTitle>
+   985→      </CardHeader>
+   986→      <CardContent className="pt-2">
+   987→        <p className="text-xs text-muted-foreground mb-4">
+   988→          High-potential employees flagged for internal moves — based on growth
+   989→          score and skill match against open senior roles.
+   990→        </p>
+   991→
+   992→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+   993→          {candidates.length === 0 ? (
+   994→            <div className="lg:col-span-2 py-10 text-center text-xs text-muted-foreground">
+   995→              No mobility candidates yet. Add employees with growth scores above
+   996→              70 and matching skills.
+   997→            </div>
+   998→          ) : (
+   999→            candidates.map((c, i) => (
+  1000→              <motion.div
+  1001→                key={c.employeeId}
+  1002→                initial={{ opacity: 0, y: 8 }}
+  1003→                animate={{ opacity: 1, y: 0 }}
+  1004→                transition={{ delay: i * 0.05 }}
+  1005→                className="rounded-xl border p-4 hover:border-brand/40 hover:shadow-sm transition-all cursor-pointer"
+  1006→                onClick={() => onSelectEmployee(c.employeeId)}
+  1007→              >
+  1008→                <div className="flex items-start justify-between mb-3">
+  1009→                  <div>
+  1010→                    <div className="flex items-center gap-2">
+  1011→                      <span className="font-semibold text-sm">{c.name}</span>
+  1012→                      {c.departmentName && (
+  1013→                        <Badge
+  1014→                          variant="outline"
+  1015→                          className="text-[10px] h-5"
+  1016→                        >
+  1017→                          {c.departmentName}
+  1018→                        </Badge>
+  1019→                      )}
+  1020→                    </div>
+  1021→                    <p className="text-[11px] text-muted-foreground mt-0.5">
+  1022→                      Currently: {c.role || '—'}
+  1023→                    </p>
+  1024→                  </div>
+  1025→                  <div className="text-right">
+  1026→                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+  1027→                      Readiness
+  1028→                    </div>
+  1029→                    <div
+  1030→                      className={`text-lg font-bold tabular-nums ${
+  1031→                        c.readinessScore >= 75
+  1032→                          ? 'text-brand'
+  1033→                          : c.readinessScore >= 60
+  1034→                          ? 'text-amber-600'
+  1035→                          : 'text-muted-foreground'
+  1036→                      }`}
+  1037→                    >
+  1038→                      {c.readinessScore}
+  1039→                    </div>
+  1040→                  </div>
+  1041→                </div>
+  1042→
+  1043→                <div className="flex items-center gap-2 mb-3 rounded-lg bg-brand-soft/40 px-3 py-2">
+  1044→                  <ArrowUpRight className="h-4 w-4 text-brand shrink-0" />
+  1045→                  <div className="min-w-0">
+  1046→                    <div className="text-[10px] text-muted-foreground uppercase tracking-wide">
+  1047→                      Suggested next role
+  1048→                    </div>
+  1049→                    <div className="text-sm font-medium text-brand truncate">
+  1050→                      {c.suggestedNextRole}
+  1051→                    </div>
+  1052→                  </div>
+  1053→                </div>
+  1054→
+  1055→                <div className="flex items-center gap-2 mb-2">
+  1056→                  <Progress
+  1057→                    value={c.readinessScore}
+  1058→                    className="h-1.5 flex-1"
+  1059→                  />
+  1060→                  <span className="text-[11px] text-muted-foreground tabular-nums">
+  1061→                    Growth {c.growthScore}
+  1062→                  </span>
+  1063→                </div>
+  1064→
+  1065→                {c.matchedSkills.length > 0 && (
+  1066→                  <div className="flex flex-wrap gap-1 mt-2">
+  1067→                    {c.matchedSkills.map((s) => (
+  1068→                      <span
+  1069→                        key={s}
+  1070→                        className="text-[10px] px-1.5 py-0.5 rounded bg-brand/10 text-brand border border-brand/20"
+  1071→                      >
+  1072→                        {s}
+  1073→                      </span>
+  1074→                    ))}
+  1075→                  </div>
+  1076→                )}
+  1077→              </motion.div>
+  1078→            ))
+  1079→          )}
+  1080→        </div>
+  1081→      </CardContent>
+  1082→    </Card>
+  1083→  )
+  1084→}
+  1085→
+  1086→// --- Employee Detail Dialog -------------------------------------------------
+  1087→
+  1088→function EmployeeDetailDialog({
+  1089→  employee,
+  1090→  onClose,
+  1091→}: {
+  1092→  employee: EmployeeDTO | null
+  1093→  onClose: () => void
+  1094→}) {
+  1095→  // Simple deterministic growth-plan generator (client-side, no AI call needed)
+  1096→  const growthPlan = employee
+  1097→    ? generateGrowthPlan(employee)
+  1098→    : null
+  1099→
+  1100→  return (
+  1101→    <Dialog open={!!employee} onOpenChange={(open) => !open && onClose()}>
+  1102→      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+  1103→        {employee && (
+  1104→          <>
+  1105→            <DialogHeader>
+  1106→              <DialogTitle className="flex items-center gap-2">
+  1107→                <span>{employee.name}</span>
+  1108→                {employee.level && (
+  1109→                  <Badge
+  1110→                    variant="outline"
+  1111→                    className={`text-[10px] h-5 ${
+  1112→                      LEVEL_BADGE_CLASS[employee.level] || ''
+  1113→                    }`}
+  1114→                  >
+  1115→                    {employee.level}
+  1116→                  </Badge>
+  1117→                )}
+  1118→              </DialogTitle>
+  1119→              <DialogDescription>
+  1120→                {employee.role || 'Role unspecified'} · {employee.email}
+  1121→                {employee.departmentName ? ` · ${employee.departmentName}` : ''}
+  1122→              </DialogDescription>
+  1123→            </DialogHeader>
+  1124→
+  1125→            <div className="space-y-4">
+  1126→              {/* Growth score ring */}
+  1127→              <div className="flex items-center gap-4 rounded-lg border p-3">
+  1128→                <div className="relative h-14 w-14 shrink-0">
+  1129→                  <svg
+  1130→                    viewBox="0 0 36 36"
+  1131→                    className="h-full w-full -rotate-90"
+  1132→                  >
+  1133→                    <circle
+  1134→                      cx="18"
+  1135→                      cy="18"
+  1136→                      r="15.5"
+  1137→                      fill="none"
+  1138→                      stroke="var(--muted)"
+  1139→                      strokeWidth="3"
+  1140→                    />
+  1141→                    <circle
+  1142→                      cx="18"
+  1143→                      cy="18"
+  1144→                      r="15.5"
+  1145→                      fill="none"
+  1146→                      stroke="var(--brand)"
+  1147→                      strokeWidth="3"
+  1148→                      strokeDasharray={`${(employee.growthScore / 100) * 97.4} 97.4`}
+  1149→                      strokeLinecap="round"
+  1150→                    />
+  1151→                  </svg>
+  1152→                  <div className="absolute inset-0 flex items-center justify-center text-sm font-bold">
+  1153→                    {employee.growthScore}
+  1154→                  </div>
+  1155→                </div>
+  1156→                <div>
+  1157→                  <div className="text-xs text-muted-foreground">
+  1158→                    Growth Score
+  1159→                  </div>
+  1160→                  <div className="text-sm font-medium">
+  1161→                    {employee.growthScore >= 80
+  1162→                      ? 'High potential — ready for stretch'
+  1163→                      : employee.growthScore >= 60
+  1164→                      ? 'Solid trajectory — keep coaching'
+  1165→                      : 'Early stage — needs structured plan'}
+  1166→                  </div>
+  1167→                </div>
+  1168→              </div>
+  1169→
+  1170→              {/* Skills */}
+  1171→              <div>
+  1172→                <div className="text-xs font-medium mb-2 flex items-center gap-1.5">
+  1173→                  <Award className="h-3.5 w-3.5 text-brand" /> Skills
+  1174→                </div>
+  1175→                {employee.skills.length === 0 ? (
+  1176→                  <p className="text-xs text-muted-foreground">No skills recorded.</p>
+  1177→                ) : (
+  1178→                  <div className="flex flex-wrap gap-1.5">
+  1179→                    {employee.skills.map((s) => (
+  1180→                      <span
+  1181→                        key={s}
+  1182→                        className="text-xs px-2 py-1 rounded-md bg-muted text-foreground"
+  1183→                      >
+  1184→                        {s}
+  1185→                      </span>
+  1186→                    ))}
+  1187→                  </div>
+  1188→                )}
+  1189→              </div>
+  1190→
+  1191→              {/* Goals */}
+  1192→              <div>
+  1193→                <div className="text-xs font-medium mb-2 flex items-center gap-1.5">
+  1194→                  <Target className="h-3.5 w-3.5 text-brand" /> Goals
+  1195→                </div>
+  1196→                {employee.goals.length === 0 ? (
+  1197→                  <p className="text-xs text-muted-foreground">No goals set yet.</p>
+  1198→                ) : (
+  1199→                  <ul className="space-y-1.5">
+  1200→                    {employee.goals.map((g, i) => (
+  1201→                      <li
+  1202→                        key={i}
+  1203→                        className="text-xs flex items-start gap-2 rounded-md bg-muted/50 px-2.5 py-1.5"
+  1204→                      >
+  1205→                        <span className="text-brand mt-0.5">·</span>
+  1206→                        <span>{g}</span>
+  1207→                      </li>
+  1208→                    ))}
+  1209→                  </ul>
+  1210→                )}
+  1211→              </div>
+  1212→
+  1213→              {/* Suggested growth plan */}
+  1214→              {growthPlan && (
+  1215→                <div className="rounded-lg border border-brand/20 bg-brand-soft/30 p-3">
+  1216→                  <div className="text-xs font-medium mb-2 flex items-center gap-1.5 text-brand">
+  1217→                    <Sparkles className="h-3.5 w-3.5" /> Suggested Growth Plan
+  1218→                  </div>
+  1219→                  <div className="space-y-1.5 text-xs">
+  1220→                    <div>
+  1221→                      <span className="font-medium">Next move:</span>{' '}
+  1222→                      <span className="text-muted-foreground">
+  1223→                        {growthPlan.nextMove}
+  1224→                      </span>
+  1225→                    </div>
+  1226→                    <div>
+  1227→                      <span className="font-medium">Focus skills:</span>{' '}
+  1228→                      <span className="text-muted-foreground">
+  1229→                        {growthPlan.focusSkills.join(', ')}
+  1230→                      </span>
+  1231→                    </div>
+  1232→                    <div>
+  1233→                      <span className="font-medium">Timeline:</span>{' '}
+  1234→                      <span className="text-muted-foreground">
+  1235→                        {growthPlan.timeline}
+  1236→                      </span>
+  1237→                    </div>
+  1238→                    <div>
+  1239→                      <span className="font-medium">Stretch goal:</span>{' '}
+  1240→                      <span className="text-muted-foreground">
+  1241→                        {growthPlan.stretch}
+  1242→                      </span>
+  1243→                    </div>
+  1244→                  </div>
+  1245→                </div>
+  1246→              )}
+  1247→            </div>
+  1248→
+  1249→            <DialogFooter>
+  1250→              <DialogClose asChild>
+  1251→                <Button variant="outline">Close</Button>
+  1252→              </DialogClose>
+  1253→            </DialogFooter>
+  1254→          </>
+  1255→        )}
+  1256→      </DialogContent>
+  1257→    </Dialog>
+  1258→  )
+  1259→}
+  1260→
+  1261→// --- Helpers ----------------------------------------------------------------
+  1262→
+  1263→function generateGrowthPlan(emp: EmployeeDTO): {
+  1264→  nextMove: string
+  1265→  focusSkills: string[]
+  1266→  timeline: string
+  1267→  stretch: string
+  1268→} {
+  1269→  const level = emp.level ?? 'Mid'
+  1270→  const skills = emp.skills
+  1271→
+  1272→  // Pick focus skills: known-adjacent senior skills not yet held
+  1273→  const SENIOR_SKILLS_BY_DEPT: Record<string, string[]> = {
+  1274→    Engineering: ['System Design', 'Architecture', 'Mentoring', 'Leadership'],
+  1275→    Product: ['Strategy', 'Leadership', 'Analytics', 'Roadmapping'],
+  1276→    Design: ['Leadership', 'Design Systems', 'Research', 'Strategy'],
+  1277→  }
+  1278→  const deptSkills =
+  1279→    SENIOR_SKILLS_BY_DEPT[emp.departmentName ?? 'Engineering'] ??
+  1280→    SENIOR_SKILLS_BY_DEPT.Engineering
+  1281→  const focusSkills = deptSkills.filter(
+  1282→    (s) => !skills.some((es) => es.toLowerCase() === s.toLowerCase())
+  1283→  )
+  1284→  const focus = focusSkills.length > 0 ? focusSkills.slice(0, 3) : deptSkills.slice(0, 2)
+  1285→
+  1286→  // Next move + timeline based on current level
+  1287→  let nextMove = 'Senior IC track'
+  1288→  let timeline = '6-9 months'
+  1289→  if (level === 'Junior') {
+  1290→    nextMove = 'Mid-level promotion'
+  1291→    timeline = '6-9 months'
+  1292→  } else if (level === 'Mid') {
+  1293→    nextMove = 'Senior promotion'
+  1294→    timeline = '9-12 months'
+  1295→  } else if (level === 'Senior') {
+  1296→    nextMove = 'Staff or Lead track'
+  1297→    timeline = '12-18 months'
+  1298→  } else if (level === 'Staff' || level === 'Lead') {
+  1299→    nextMove = 'Principal / Director track'
+  1300→    timeline = '18-24 months'
+  1301→  }
+  1302→
+  1303→  const stretch =
+  1304→    emp.goals[0] ?? `Own a flagship initiative in the ${emp.departmentName ?? 'org'} within a year`
+  1305→
+  1306→  return { nextMove, focusSkills: focus, timeline, stretch }
+  1307→}
+  1308→

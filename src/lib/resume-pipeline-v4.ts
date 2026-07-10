@@ -322,6 +322,8 @@ Rules:
 - Separate technical skills from soft skills.
 - Extract languages with proficiency levels.
 - Extract courses with provider, hours, and dates if available.
+- CRITICAL: Ensure every JSON array is properly closed with ] before the next property begins. Count your brackets carefully.
+- Return ONLY valid, parseable JSON. No extra text.
 ${isBilingual ? '- Content is bilingual (Arabic+English). Keep both versions. Deduplicate repeated content.\n- Fill nameAr and objectiveAr if Arabic versions exist in the text.' : ''}
 ${hasJD ? `- Optimize for ATS keywords from this job description:\n${sanitizePromptInput(jobDescription!, 3000)}\n- Only include skills the candidate actually has. Never add JD skills they don\'t possess.` : ''}
 

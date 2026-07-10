@@ -1,0 +1,1633 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→import { Spinner } from '@/components/careeros/loading'
+    10→import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    17→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    18→import { Switch } from '@/components/ui/switch'
+    19→import { Progress } from '@/components/ui/progress'
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogHeader,
+    24→  DialogTitle,
+    25→  DialogDescription,
+    26→  DialogFooter,
+    27→} from '@/components/ui/dialog'
+    28→import {
+    29→  ShoppingBag,
+    30→  Star,
+    31→  Download,
+    32→  Users,
+    33→  FileText,
+    34→  Globe,
+    35→  Mail,
+    36→  GraduationCap,
+    37→  BookOpen,
+    38→  Package,
+    39→  Sparkles,
+    40→  TrendingUp,
+    41→  Check,
+    42→  Plus,
+    43→  Trash2,
+    44→  BadgeCheck,
+    45→  Wallet,
+    46→  Award,
+    47→  Pencil,
+    48→} from 'lucide-react'
+    49→
+    50→// ---------------------------------------------------------------------------
+    51→// Types (local — the marketplace module owns its shape)
+    52→// ---------------------------------------------------------------------------
+    53→
+    54→type Template = {
+    55→  id: string
+    56→  kind: 'template'
+    57→  creatorId: string
+    58→  creatorName: string | null
+    59→  creatorHeadline: string | null
+    60→  type: 'resume' | 'portfolio' | 'cover_letter'
+    61→  name: string
+    62→  description: string | null
+    63→  category: string | null
+    64→  preview: { accent?: string; layout?: string; font?: string; theme?: string; hero?: string; tone?: string } | null
+    65→  config: Record<string, unknown> | null
+    66→  price: number
+    67→  priceDisplay: string
+    68→  downloads: number
+    69→  rating: number
+    70→  published: boolean
+    71→  featured: boolean
+    72→  createdAt: string
+    73→  updatedAt: string
+    74→}
+    75→
+    76→type Content = {
+    77→  id: string
+    78→  kind: 'content'
+    79→  creatorId: string
+    80→  creatorName: string | null
+    81→  creatorHeadline: string | null
+    82→  type: 'course' | 'guide' | 'template' | 'coaching_pack'
+    83→  title: string
+    84→  description: string | null
+    85→  content: string
+    86→  price: number
+    87→  priceDisplay: string
+    88→  tags: string[]
+    89→  published: boolean
+    90→  enrollments: number
+    91→  rating: number
+    92→  createdAt: string
+    93→  updatedAt: string
+    94→}
+    95→
+    96→type MarketplaceData = {
+    97→  templates: Template[]
+    98→  content: Content[]
+    99→  mine: { templates: Template[]; content: Content[] }
+   100→}
+   101→
+   102→type Item = Template | Content
+   103→
+   104→// ---------------------------------------------------------------------------
+   105→// Styling maps
+   106→// ---------------------------------------------------------------------------
+   107→
+   108→const ACCENT_STYLES: Record<string, { grad: string; solid: string; text: string; soft: string; ring: string }> = {
+   109→  emerald: { grad: 'from-emerald-500 to-teal-400', solid: 'bg-emerald-500', text: 'text-emerald-600', soft: 'bg-emerald-500/15', ring: 'ring-emerald-500/30' },
+   110→  slate: { grad: 'from-slate-600 to-slate-400', solid: 'bg-slate-500', text: 'text-slate-600', soft: 'bg-slate-500/15', ring: 'ring-slate-500/30' },
+   111→  fuchsia: { grad: 'from-fuchsia-500 to-pink-400', solid: 'bg-fuchsia-500', text: 'text-fuchsia-600', soft: 'bg-fuchsia-500/15', ring: 'ring-fuchsia-500/30' },
+   112→  amber: { grad: 'from-amber-500 to-orange-400', solid: 'bg-amber-500', text: 'text-amber-600', soft: 'bg-amber-500/15', ring: 'ring-amber-500/30' },
+   113→}
+   114→
+   115→function accentOf(item: Item): string {
+   116→  if (item.kind === 'template') {
+   117→    const a = (item.preview?.accent as string) || (item.config?.accent as string) || 'emerald'
+   118→    return ACCENT_STYLES[a] ? a : 'emerald'
+   119→  }
+   120→  // Map content type to a stable accent.
+   121→  const map: Record<string, string> = { course: 'emerald', guide: 'amber', template: 'slate', coaching_pack: 'fuchsia' }
+   122→  return map[item.type] || 'emerald'
+   123→}
+   124→
+   125→const TYPE_META: Record<string, { label: string; icon: typeof FileText }> = {
+   126→  resume: { label: 'Resume', icon: FileText },
+   127→  portfolio: { label: 'Portfolio', icon: Globe },
+   128→  cover_letter: { label: 'Cover Letter', icon: Mail },
+   129→  course: { label: 'Course', icon: GraduationCap },
+   130→  guide: { label: 'Guide', icon: BookOpen },
+   131→  template: { label: 'Template', icon: Package },
+   132→  coaching_pack: { label: 'Coaching', icon: Award },
+   133→}
+   134→
+   135→function typeMeta(type: string) {
+   136→  return TYPE_META[type] ?? TYPE_META.template
+   137→}
+   138→
+   139→// ---------------------------------------------------------------------------
+   140→// Helpers
+   141→// ---------------------------------------------------------------------------
+   142→
+   143→function formatCount(n: number): string {
+   144→  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+   145→  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+   146→  return String(n)
+   147→}
+   148→
+   149→function initials(name: string | null): string {
+   150→  if (!name) return '··'
+   151→  const parts = name.trim().split(/\s+/)
+   152→  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || name.slice(0, 2).toUpperCase()
+   153→}
+   154→
+   155→// ---------------------------------------------------------------------------
+   156→// Star rating
+   157→// ---------------------------------------------------------------------------
+   158→
+   159→function StarRating({ value, size = 'sm' }: { value: number; size?: 'sm' | 'md' }) {
+   160→  const dim = size === 'md' ? 'h-4 w-4' : 'h-3.5 w-3.5'
+   161→  const full = Math.floor(value)
+   162→  const half = value - full >= 0.5
+   163→  return (
+   164→    <div className="inline-flex items-center gap-0.5">
+   165→      {[0, 1, 2, 3, 4].map((i) => {
+   166→        const filled = i < full
+   167→        const isHalf = i === full && half
+   168→        return (
+   169→          <Star
+   170→            key={i}
+   171→            className={`${dim} ${filled || isHalf ? 'fill-amber-400 text-amber-500' : 'fill-muted text-muted-foreground/40'}`}
+   172→          />
+   173→        )
+   174→      })}
+   175→      <span className={`ms-1 font-medium ${size === 'md' ? 'text-sm' : 'text-xs'} text-foreground`}>
+   176→        {value.toFixed(1)}
+   177→      </span>
+   178→    </div>
+   179→  )
+   180→}
+   181→
+   182→// ---------------------------------------------------------------------------
+   183→// Template preview thumbnail — a styled mini layout using the accent color
+   184→// ---------------------------------------------------------------------------
+   185→
+   186→function TemplateThumbnail({ template, className }: { template: Template; className?: string }) {
+   187→  const accent = ACCENT_STYLES[accentOf(template)]
+   188→  const layout = template.preview?.layout || 'single-column'
+   189→  const theme = template.preview?.theme
+   190→
+   191→  if (template.type === 'portfolio') {
+   192→    return (
+   193→      <div className={`relative h-full w-full overflow-hidden bg-gradient-to-br ${accent.grad} ${className ?? ''}`}>
+   194→        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, white 0, transparent 40%)' }} />
+   195→        <div className="absolute inset-0 p-3 flex flex-col">
+   196→          <div className="flex items-center gap-1 mb-2">
+   197→            <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
+   198→            <span className="h-1.5 w-1.5 rounded-full bg-white/50" />
+   199→            <span className="h-1.5 w-1.5 rounded-full bg-white/30" />
+   200→          </div>
+   201→          <div className="text-white font-semibold text-[10px] leading-tight mb-1">
+   202→            {theme === 'minimal' ? 'engineer.' : template.name}
+   203→          </div>
+   204→          <div className="text-white/70 text-[8px] mb-2">{template.preview?.hero || 'Portfolio'}</div>
+   205→          <div className="grid grid-cols-2 gap-1 mt-auto">
+   206→            <div className="h-6 rounded bg-white/25" />
+   207→            <div className="h-6 rounded bg-white/15" />
+   208→            <div className="h-6 rounded bg-white/15" />
+   209→            <div className="h-6 rounded bg-white/25" />
+   210→          </div>
+   211→        </div>
+   212→      </div>
+   213→    )
+   214→  }
+   215→
+   216→  if (template.type === 'cover_letter') {
+   217→    return (
+   218→      <div className={`relative h-full w-full overflow-hidden bg-card ${className ?? ''}`}>
+   219→        <div className={`absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r ${accent.grad}`} />
+   220→        <div className="absolute inset-0 p-3 pt-4 flex flex-col gap-1.5">
+   221→          <div className={`h-1.5 w-12 rounded ${accent.solid}`} />
+   222→          <div className="h-1 w-20 rounded bg-muted-foreground/30" />
+   223→          <div className="h-1 w-16 rounded bg-muted-foreground/20" />
+   224→          <div className="mt-1 space-y-1">
+   225→            <div className="h-0.5 w-full rounded bg-muted-foreground/20" />
+   226→            <div className="h-0.5 w-full rounded bg-muted-foreground/20" />
+   227→            <div className="h-0.5 w-3/4 rounded bg-muted-foreground/20" />
+   228→          </div>
+   229→          <div className="mt-1 space-y-1">
+   230→            <div className="h-0.5 w-full rounded bg-muted-foreground/15" />
+   231→            <div className="h-0.5 w-5/6 rounded bg-muted-foreground/15" />
+   232→          </div>
+   233→          <div className={`mt-auto h-1.5 w-8 rounded ${accent.solid}`} />
+   234→        </div>
+   235→      </div>
+   236→    )
+   237→  }
+   238→
+   239→  // resume (default) — accent bar + header + content lines
+   240→  return (
+   241→    <div className={`relative h-full w-full overflow-hidden bg-card ${className ?? ''}`}>
+   242→      {layout === 'accent-bar' && <div className={`absolute top-0 inset-x-0 h-2 bg-gradient-to-r ${accent.grad}`} />}
+   243→      {layout === 'two-column-header' && (
+   244→        <div className={`absolute top-0 inset-x-0 h-10 bg-gradient-to-br ${accent.grad} opacity-90`} />
+   245→      )}
+   246→      <div className="absolute inset-0 p-3 flex flex-col gap-1.5" style={{ paddingTop: layout === 'two-column-header' ? '2.75rem' : '0.75rem' }}>
+   247→        {layout !== 'accent-bar' && layout !== 'two-column-header' && (
+   248→          <div className={`h-1.5 w-16 rounded ${accent.solid} mb-1`} />
+   249→        )}
+   250→        <div className="h-2 w-20 rounded bg-foreground/70" />
+   251→        <div className="h-1 w-24 rounded bg-muted-foreground/40" />
+   252→        <div className="mt-1.5 space-y-1">
+   253→          <div className="h-1 w-full rounded bg-muted-foreground/25" />
+   254→          <div className="h-1 w-full rounded bg-muted-foreground/25" />
+   255→          <div className="h-1 w-2/3 rounded bg-muted-foreground/25" />
+   256→        </div>
+   257→        <div className="mt-1.5 grid grid-cols-3 gap-1">
+   258→          <div className="h-1 rounded bg-muted-foreground/20" />
+   259→          <div className="h-1 rounded bg-muted-foreground/20" />
+   260→          <div className="h-1 rounded bg-muted-foreground/20" />
+   261→        </div>
+   262→        <div className="mt-auto flex gap-1">
+   263→          <div className={`h-1.5 flex-1 rounded ${accent.solid} opacity-80`} />
+   264→          <div className="h-1.5 w-6 rounded bg-muted-foreground/20" />
+   265→        </div>
+   266→      </div>
+   267→    </div>
+   268→  )
+   269→}
+   270→
+   271→// ---------------------------------------------------------------------------
+   272→// Template card
+   273→// ---------------------------------------------------------------------------
+   274→
+   275→function TemplateCard({
+   276→  template,
+   277→  onInstall,
+   278→  onPreview,
+   279→  isInstalling,
+   280→}: {
+   281→  template: Template
+   282→  onInstall: (t: Template) => void
+   283→  onPreview: (t: Template) => void
+   284→  isInstalling: boolean
+   285→}) {
+   286→  const accent = ACCENT_STYLES[accentOf(template)]
+   287→  const Icon = typeMeta(template.type).icon
+   288→  return (
+   289→    <motion.div
+   290→      initial={{ opacity: 0, y: 8 }}
+   291→      animate={{ opacity: 1, y: 0 }}
+   292→      transition={{ duration: 0.25 }}
+   293→      whileHover={{ y: -2 }}
+   294→    >
+   295→      <Card className="group h-full overflow-hidden border-border/70 bg-card/60 backdrop-blur-sm transition-colors hover:border-brand/40">
+   296→        <button
+   297→          type="button"
+   298→          onClick={() => onPreview(template)}
+   299→          className="block w-full text-start"
+   300→          aria-label={`Preview ${template.name}`}
+   301→        >
+   302→          <div className="relative h-36 sm:h-40 border-b border-border/60">
+   303→            <TemplateThumbnail template={template} />
+   304→            <div className="absolute top-2 start-2 flex items-center gap-1.5">
+   305→              <Badge className="bg-background/85 text-foreground backdrop-blur border-border/60 shadow-sm">
+   306→                <Icon className="h-3 w-3" />
+   307→                {typeMeta(template.type).label}
+   308→              </Badge>
+   309→              {template.featured && (
+   310→                <Badge className="bg-amber-500/90 text-white border-0 shadow-sm">
+   311→                  <Sparkles className="h-3 w-3" /> Featured
+   312→                </Badge>
+   313→              )}
+   314→            </div>
+   315→          </div>
+   316→        </button>
+   317→        <CardContent className="p-4 space-y-3">
+   318→          <div>
+   319→            <button
+   320→              type="button"
+   321→              onClick={() => onPreview(template)}
+   322→              className="text-start font-semibold leading-tight hover:text-brand transition-colors line-clamp-1"
+   323→            >
+   324→              {template.name}
+   325→            </button>
+   326→            <p className="text-xs text-muted-foreground line-clamp-2 mt-1 min-h-[2rem]">
+   327→              {template.description}
+   328→            </p>
+   329→          </div>
+   330→
+   331→          <div className="flex items-center justify-between text-xs">
+   332→            <div className="flex items-center gap-1.5 min-w-0">
+   333→              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${accent.soft} ${accent.text} text-[9px] font-semibold ring-1 ${accent.ring}`}>
+   334→                {initials(template.creatorName)}
+   335→              </div>
+   336→              <span className="truncate text-muted-foreground">{template.creatorName}</span>
+   337→            </div>
+   338→            <StarRating value={template.rating} />
+   339→          </div>
+   340→
+   341→          <div className="flex items-center justify-between pt-1 border-t border-border/50">
+   342→            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+   343→              <span className="inline-flex items-center gap-1">
+   344→                <Download className="h-3 w-3" />
+   345→                {formatCount(template.downloads)}
+   346→              </span>
+   347→              {template.category && (
+   348→                <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+   349→                  {template.category}
+   350→                </Badge>
+   351→              )}
+   352→            </div>
+   353→            <div className={`text-sm font-semibold ${template.price === 0 ? 'text-brand' : 'text-foreground'}`}>
+   354→              {template.priceDisplay}
+   355→            </div>
+   356→          </div>
+   357→        </CardContent>
+   358→        <CardFooter className="p-4 pt-0">
+   359→          <Button
+   360→            size="sm"
+   361→            className="w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   362→            disabled={isInstalling}
+   363→            onClick={() => onInstall(template)}
+   364→          >
+   365→            {isInstalling ? <Spinner className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
+   366→            {template.price === 0 ? 'Install' : 'Get Template'}
+   367→          </Button>
+   368→        </CardFooter>
+   369→      </Card>
+   370→    </motion.div>
+   371→  )
+   372→}
+   373→
+   374→// ---------------------------------------------------------------------------
+   375→// Content card
+   376→// ---------------------------------------------------------------------------
+   377→
+   378→function ContentCard({
+   379→  content,
+   380→  onEnroll,
+   381→  onPreview,
+   382→  isEnrolling,
+   383→}: {
+   384→  content: Content
+   385→  onEnroll: (c: Content) => void
+   386→  onPreview: (c: Content) => void
+   387→  isEnrolling: boolean
+   388→}) {
+   389→  const accent = ACCENT_STYLES[accentOf(content)]
+   390→  const Icon = typeMeta(content.type).icon
+   391→  return (
+   392→    <motion.div
+   393→      initial={{ opacity: 0, y: 8 }}
+   394→      animate={{ opacity: 1, y: 0 }}
+   395→      transition={{ duration: 0.25 }}
+   396→      whileHover={{ y: -2 }}
+   397→    >
+   398→      <Card className="group h-full overflow-hidden border-border/70 bg-card/60 backdrop-blur-sm transition-colors hover:border-brand/40">
+   399→        <button
+   400→          type="button"
+   401→          onClick={() => onPreview(content)}
+   402→          className="block w-full text-start"
+   403→          aria-label={`Preview ${content.title}`}
+   404→        >
+   405→          <div className={`relative h-24 bg-gradient-to-br ${accent.grad} overflow-hidden`}>
+   406→            <div className="absolute inset-0 opacity-25" style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, white 0, transparent 50%)' }} />
+   407→            <div className="absolute inset-0 p-4 flex items-center justify-between">
+   408→              <div className="text-white">
+   409→                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider opacity-90 mb-1">
+   410→                  <Icon className="h-3 w-3" />
+   411→                  {typeMeta(content.type).label}
+   412→                </div>
+   413→                <div className="text-base font-semibold leading-tight line-clamp-2 max-w-[80%]">
+   414→                  {content.title}
+   415→                </div>
+   416→              </div>
+   417→              <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur ring-1 ring-white/30">
+   418→                <Icon className="h-6 w-6 text-white" />
+   419→              </div>
+   420→            </div>
+   421→          </div>
+   422→        </button>
+   423→        <CardContent className="p-4 space-y-3">
+   424→          <div className="flex items-center justify-between text-xs">
+   425→            <div className="flex items-center gap-1.5 min-w-0">
+   426→              <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${accent.soft} ${accent.text} text-[9px] font-semibold ring-1 ${accent.ring}`}>
+   427→                {initials(content.creatorName)}
+   428→              </div>
+   429→              <span className="truncate text-muted-foreground">{content.creatorName}</span>
+   430→            </div>
+   431→            <StarRating value={content.rating} />
+   432→          </div>
+   433→
+   434→          <p className="text-xs text-muted-foreground line-clamp-2 min-h-[2rem]">
+   435→            {content.description}
+   436→          </p>
+   437→
+   438→          {content.tags.length > 0 && (
+   439→            <div className="flex flex-wrap gap-1">
+   440→              {content.tags.slice(0, 3).map((tag) => (
+   441→                <Badge key={tag} variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+   442→                  {tag}
+   443→                </Badge>
+   444→              ))}
+   445→            </div>
+   446→          )}
+   447→
+   448→          <div className="flex items-center justify-between pt-1 border-t border-border/50">
+   449→            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+   450→              <Users className="h-3 w-3" />
+   451→              {formatCount(content.enrollments)} enrolled
+   452→            </div>
+   453→            <div className={`text-sm font-semibold ${content.price === 0 ? 'text-brand' : 'text-foreground'}`}>
+   454→              {content.priceDisplay}
+   455→            </div>
+   456→          </div>
+   457→        </CardContent>
+   458→        <CardFooter className="p-4 pt-0">
+   459→          <Button
+   460→            size="sm"
+   461→            className="w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   462→            disabled={isEnrolling}
+   463→            onClick={() => onEnroll(content)}
+   464→          >
+   465→            {isEnrolling ? <Spinner className="h-3.5 w-3.5" /> : content.type === 'course' ? <GraduationCap className="h-3.5 w-3.5" /> : <BookOpen className="h-3.5 w-3.5" />}
+   466→            {content.price === 0 ? 'Enroll Free' : content.type === 'course' ? 'Enroll' : 'Get Guide'}
+   467→          </Button>
+   468→        </CardFooter>
+   469→      </Card>
+   470→    </motion.div>
+   471→  )
+   472→}
+   473→
+   474→// ---------------------------------------------------------------------------
+   475→// Featured carousel (horizontal scroll)
+   476→// ---------------------------------------------------------------------------
+   477→
+   478→function FeaturedCarousel({
+   479→  items,
+   480→  onInstall,
+   481→  onPreview,
+   482→  installingId,
+   483→}: {
+   484→  items: Template[]
+   485→  onInstall: (t: Template) => void
+   486→  onPreview: (t: Template) => void
+   487→  installingId: string | null
+   488→}) {
+   489→  if (items.length === 0) return null
+   490→  return (
+   491→    <motion.div
+   492→      initial={{ opacity: 0, y: 8 }}
+   493→      animate={{ opacity: 1, y: 0 }}
+   494→      transition={{ duration: 0.3 }}
+   495→      className="relative overflow-hidden rounded-2xl border border-brand/20 bg-gradient-to-br from-brand-soft/60 via-card/60 to-card/60 backdrop-blur-sm p-4 sm:p-5"
+   496→    >
+   497→      <div className="flex items-center justify-between mb-3">
+   498→        <div className="flex items-center gap-2">
+   499→          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/15 text-brand ring-1 ring-brand/20">
+   500→            <Sparkles className="h-3.5 w-3.5" />
+   501→          </div>
+   502→          <div>
+   503→            <h3 className="text-sm font-semibold leading-tight">Featured Templates</h3>
+   504→            <p className="text-[11px] text-muted-foreground">Curated picks loved by the community</p>
+   505→          </div>
+   506→        </div>
+   507→      </div>
+   508→      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1 snap-x" style={{ scrollbarWidth: 'thin' }}>
+   509→        {items.map((t) => {
+   510→          const accent = ACCENT_STYLES[accentOf(t)]
+   511→          const Icon = typeMeta(t.type).icon
+   512→          return (
+   513→            <motion.div
+   514→              key={t.id}
+   515→              whileHover={{ y: -2 }}
+   516→              className="snap-start shrink-0 w-64 sm:w-72 rounded-xl border border-border/70 bg-card/80 backdrop-blur-sm overflow-hidden"
+   517→            >
+   518→              <button
+   519→                type="button"
+   520→                onClick={() => onPreview(t)}
+   521→                className="block w-full text-start"
+   522→                aria-label={`Preview ${t.name}`}
+   523→              >
+   524→                <div className="relative h-24 border-b border-border/60">
+   525→                  <TemplateThumbnail template={t} />
+   526→                  <div className="absolute top-2 start-2">
+   527→                    <Badge className="bg-background/85 text-foreground backdrop-blur border-border/60 shadow-sm">
+   528→                      <Icon className="h-3 w-3" />
+   529→                      {typeMeta(t.type).label}
+   530→                    </Badge>
+   531→                  </div>
+   532→                </div>
+   533→              </button>
+   534→              <div className="p-3 space-y-2">
+   535→                <div className="flex items-start justify-between gap-2">
+   536→                  <button
+   537→                    type="button"
+   538→                    onClick={() => onPreview(t)}
+   539→                    className="text-start text-sm font-semibold leading-tight hover:text-brand transition-colors line-clamp-1"
+   540→                  >
+   541→                    {t.name}
+   542→                  </button>
+   543→                  <StarRating value={t.rating} />
+   544→                </div>
+   545→                <p className="text-[11px] text-muted-foreground line-clamp-1">{t.description}</p>
+   546→                <div className="flex items-center justify-between pt-1">
+   547→                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+   548→                    <div className={`h-4 w-4 rounded-full ${accent.soft} ${accent.text} flex items-center justify-center text-[7px] font-semibold`}>
+   549→                      {initials(t.creatorName)}
+   550→                    </div>
+   551→                    <span className="truncate max-w-[5rem]">{t.creatorName}</span>
+   552→                    <span className="inline-flex items-center gap-0.5">
+   553→                      <Download className="h-2.5 w-2.5" />
+   554→                      {formatCount(t.downloads)}
+   555→                    </span>
+   556→                  </div>
+   557→                  <div className={`text-xs font-semibold ${t.price === 0 ? 'text-brand' : 'text-foreground'}`}>
+   558→                    {t.priceDisplay}
+   559→                  </div>
+   560→                </div>
+   561→                <Button
+   562→                  size="sm"
+   563→                  className="w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90 h-7 text-[11px]"
+   564→                  disabled={installingId === t.id}
+   565→                  onClick={() => onInstall(t)}
+   566→                >
+   567→                  {installingId === t.id ? <Spinner className="h-3 w-3" /> : <Download className="h-3 w-3" />}
+   568→                  Install
+   569→                </Button>
+   570→              </div>
+   571→            </motion.div>
+   572→          )
+   573→        })}
+   574→      </div>
+   575→    </motion.div>
+   576→  )
+   577→}
+   578→
+   579→// ---------------------------------------------------------------------------
+   580→// Filter bar
+   581→// ---------------------------------------------------------------------------
+   582→
+   583→const TYPE_FILTERS: { value: string; label: string; icon: typeof FileText }[] = [
+   584→  { value: 'all', label: 'All', icon: Package },
+   585→  { value: 'resume', label: 'Resume', icon: FileText },
+   586→  { value: 'portfolio', label: 'Portfolio', icon: Globe },
+   587→  { value: 'cover_letter', label: 'Cover Letter', icon: Mail },
+   588→]
+   589→
+   590→function FilterBar({
+   591→  typeFilter,
+   592→  setTypeFilter,
+   593→  categoryFilter,
+   594→  setCategoryFilter,
+   595→  categories,
+   596→  search,
+   597→  setSearch,
+   598→}: {
+   599→  typeFilter: string
+   600→  setTypeFilter: (v: string) => void
+   601→  categoryFilter: string
+   602→  setCategoryFilter: (v: string) => void
+   603→  categories: string[]
+   604→  search: string
+   605→  setSearch: (v: string) => void
+   606→}) {
+   607→  return (
+   608→    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+   609→      <div className="flex items-center gap-1 rounded-lg border border-border bg-card/60 p-1 overflow-x-auto" style={{ scrollbarWidth: 'thin' }}>
+   610→        {TYPE_FILTERS.map((f) => {
+   611→          const Icon = f.icon
+   612→          const active = typeFilter === f.value
+   613→          return (
+   614→            <button
+   615→              key={f.value}
+   616→              type="button"
+   617→              onClick={() => setTypeFilter(f.value)}
+   618→              className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition ${
+   619→                active ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+   620→              }`}
+   621→            >
+   622→              <Icon className="h-3.5 w-3.5" />
+   623→              {f.label}
+   624→            </button>
+   625→          )
+   626→        })}
+   627→      </div>
+   628→      <Input
+   629→        value={search}
+   630→        onChange={(e) => setSearch(e.target.value)}
+   631→        placeholder="Search templates, creators…"
+   632→        className="sm:max-w-xs h-9"
+   633→      />
+   634→      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   635→        <SelectTrigger className="h-9 w-full sm:w-44">
+   636→          <SelectValue placeholder="Category" />
+   637→        </SelectTrigger>
+   638→        <SelectContent>
+   639→          <SelectItem value="all">All categories</SelectItem>
+   640→          {categories.map((c) => (
+   641→            <SelectItem key={c} value={c}>
+   642→              {c}
+   643→            </SelectItem>
+   644→          ))}
+   645→        </SelectContent>
+   646→      </Select>
+   647→    </div>
+   648→  )
+   649→}
+   650→
+   651→// ---------------------------------------------------------------------------
+   652→// Item preview dialog
+   653→// ---------------------------------------------------------------------------
+   654→
+   655→function ItemDialog({
+   656→  item,
+   657→  open,
+   658→  onOpenChange,
+   659→  onAction,
+   660→  isBusy,
+   661→}: {
+   662→  item: Item | null
+   663→  open: boolean
+   664→  onOpenChange: (v: boolean) => void
+   665→  onAction: (i: Item) => void
+   666→  isBusy: boolean
+   667→}) {
+   668→  if (!item) return null
+   669→  const accent = ACCENT_STYLES[accentOf(item)]
+   670→  const isTemplate = item.kind === 'template'
+   671→  const Icon = typeMeta(isTemplate ? item.type : item.type).icon
+   672→  return (
+   673→    <Dialog open={open} onOpenChange={onOpenChange}>
+   674→      <DialogContent className="sm:max-w-lg">
+   675→        <DialogHeader>
+   676→          <div className="flex items-center gap-2 mb-1">
+   677→            <Badge variant="outline" className="text-[10px]">
+   678→              <Icon className="h-3 w-3" />
+   679→              {typeMeta(isTemplate ? item.type : item.type).label}
+   680→            </Badge>
+   681→            {isTemplate && (item as Template).featured && (
+   682→              <Badge className="bg-amber-500/90 text-white border-0 text-[10px]">
+   683→                <Sparkles className="h-3 w-3" /> Featured
+   684→              </Badge>
+   685→            )}
+   686→          </div>
+   687→          <DialogTitle>{isTemplate ? (item as Template).name : (item as Content).title}</DialogTitle>
+   688→          <DialogDescription>
+   689→            by <span className="font-medium text-foreground">{item.creatorName}</span>
+   690→            {item.creatorHeadline ? ` · ${item.creatorHeadline}` : ''}
+   691→          </DialogDescription>
+   692→        </DialogHeader>
+   693→
+   694→        <div className="space-y-4">
+   695→          {isTemplate && (
+   696→            <div className="relative h-40 rounded-xl overflow-hidden border border-border">
+   697→              <TemplateThumbnail template={item as Template} />
+   698→            </div>
+   699→          )}
+   700→
+   701→          <p className="text-sm text-muted-foreground">{item.description}</p>
+   702→
+   703→          {!isTemplate && (item as Content).tags.length > 0 && (
+   704→            <div className="flex flex-wrap gap-1.5">
+   705→              {(item as Content).tags.map((tag) => (
+   706→                <Badge key={tag} variant="outline" className="text-[11px] font-normal">
+   707→                  {tag}
+   708→                </Badge>
+   709→              ))}
+   710→            </div>
+   711→          )}
+   712→
+   713→          <div className="grid grid-cols-3 gap-2">
+   714→            <div className="rounded-lg border bg-card/50 p-2.5 text-center">
+   715→              <Star className="h-3.5 w-3.5 mx-auto text-amber-500 fill-amber-400" />
+   716→              <div className="text-sm font-semibold mt-1">{item.rating.toFixed(1)}</div>
+   717→              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Rating</div>
+   718→            </div>
+   719→            <div className="rounded-lg border bg-card/50 p-2.5 text-center">
+   720→              {isTemplate ? <Download className="h-3.5 w-3.5 mx-auto text-muted-foreground" /> : <Users className="h-3.5 w-3.5 mx-auto text-muted-foreground" />}
+   721→              <div className="text-sm font-semibold mt-1">{formatCount(isTemplate ? (item as Template).downloads : (item as Content).enrollments)}</div>
+   722→              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{isTemplate ? 'Downloads' : 'Enrolled'}</div>
+   723→            </div>
+   724→            <div className="rounded-lg border bg-card/50 p-2.5 text-center">
+   725→              <Wallet className="h-3.5 w-3.5 mx-auto text-muted-foreground" />
+   726→              <div className={`text-sm font-semibold mt-1 ${item.price === 0 ? 'text-brand' : ''}`}>{item.priceDisplay}</div>
+   727→              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Price</div>
+   728→            </div>
+   729→          </div>
+   730→        </div>
+   731→
+   732→        <DialogFooter>
+   733→          <Button
+   734→            className="w-full rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   735→            disabled={isBusy}
+   736→            onClick={() => onAction(item)}
+   737→          >
+   738→            {isBusy ? (
+   739→              <Spinner className="h-4 w-4" />
+   740→            ) : isTemplate ? (
+   741→              <>
+   742→                <Download className="h-4 w-4" />
+   743→                {item.price === 0 ? 'Install Free' : `Get for ${item.priceDisplay}`}
+   744→              </>
+   745→            ) : (
+   746→              <>
+   747→                <BookOpen className="h-4 w-4" />
+   748→                {item.price === 0 ? 'Enroll Free' : `Enroll for ${item.priceDisplay}`}
+   749→              </>
+   750→            )}
+   751→          </Button>
+   752→        </DialogFooter>
+   753→      </DialogContent>
+   754→    </Dialog>
+   755→  )
+   756→}
+   757→
+   758→// ---------------------------------------------------------------------------
+   759→// Creator form
+   760→// ---------------------------------------------------------------------------
+   761→
+   762→function CreatorForm({ onCreated }: { onCreated: () => Promise<void> }) {
+   763→  const { toast } = useToast()
+   764→  const { user } = useProfileSafe()
+   765→  const [kind, setKind] = useState<'template' | 'content'>('template')
+   766→  const [busy, setBusy] = useState(false)
+   767→
+   768→  // Template fields
+   769→  const [tType, setTType] = useState<'resume' | 'portfolio' | 'cover_letter'>('resume')
+   770→  const [tName, setTName] = useState('')
+   771→  const [tDesc, setTDesc] = useState('')
+   772→  const [tCategory, setTCategory] = useState('')
+   773→  const [tPrice, setTPrice] = useState('0')
+   774→  const [tConfig, setTConfig] = useState('')
+   775→  const [tPublished, setTPublished] = useState(true)
+   776→  const [tFeatured, setTFeatured] = useState(false)
+   777→
+   778→  // Content fields
+   779→  const [cType, setCType] = useState<'course' | 'guide' | 'template' | 'coaching_pack'>('guide')
+   780→  const [cTitle, setCTitle] = useState('')
+   781→  const [cDesc, setCDesc] = useState('')
+   782→  const [cTags, setCTags] = useState<string[]>([])
+   783→  const [cTagDraft, setCTagDraft] = useState('')
+   784→  const [cPrice, setCPrice] = useState('0')
+   785→  const [cContent, setCContent] = useState('')
+   786→  const [cPublished, setCPublished] = useState(true)
+   787→
+   788→  const addTag = () => {
+   789→    const v = cTagDraft.trim()
+   790→    if (v && !cTags.includes(v)) setCTags([...cTags, v])
+   791→    setCTagDraft('')
+   792→  }
+   793→
+   794→  const submit = async () => {
+   795→    setBusy(true)
+   796→    try {
+   797→      if (kind === 'template') {
+   798→        if (!tName.trim()) {
+   799→          toast({ title: 'Name required', description: 'Give your template a name.', variant: 'destructive' })
+   800→          setBusy(false)
+   801→          return
+   802→        }
+   803→        // Config is optional; if provided and not JSON, store as markdown string.
+   804→        let configValue: unknown = {}
+   805→        if (tConfig.trim()) {
+   806→          try {
+   807→            configValue = JSON.parse(tConfig)
+   808→          } catch {
+   809→            configValue = { note: tConfig }
+   810→          }
+   811→        }
+   812→        await api('/api/marketplace', {
+   813→          method: 'POST',
+   814→          body: {
+   815→            kind: 'template',
+   816→            type: tType,
+   817→            name: tName.trim(),
+   818→            description: tDesc.trim(),
+   819→            category: tCategory.trim(),
+   820→            price: Math.max(0, Math.floor(Number(tPrice) || 0)) * 100,
+   821→            config: configValue,
+   822→            published: tPublished,
+   823→            featured: tFeatured,
+   824→          },
+   825→        })
+   826→        setTName('')
+   827→        setTDesc('')
+   828→        setTCategory('')
+   829→        setTPrice('0')
+   830→        setTConfig('')
+   831→        setTFeatured(false)
+   832→        toast({ title: 'Template published', description: 'Your template is live in the marketplace.' })
+   833→      } else {
+   834→        if (!cTitle.trim()) {
+   835→          toast({ title: 'Title required', description: 'Give your content a title.', variant: 'destructive' })
+   836→          setBusy(false)
+   837→          return
+   838→        }
+   839→        if (!cContent.trim()) {
+   840→          toast({ title: 'Content required', description: 'Write or paste your guide/course content.', variant: 'destructive' })
+   841→          setBusy(false)
+   842→          return
+   843→        }
+   844→        await api('/api/marketplace', {
+   845→          method: 'POST',
+   846→          body: {
+   847→            kind: 'content',
+   848→            type: cType,
+   849→            title: cTitle.trim(),
+   850→            description: cDesc.trim(),
+   851→            tags: cTags,
+   852→            price: Math.max(0, Math.floor(Number(cPrice) || 0)) * 100,
+   853→            content: cContent,
+   854→            published: cPublished,
+   855→          },
+   856→        })
+   857→        setCTitle('')
+   858→        setCDesc('')
+   859→        setCTags([])
+   860→        setCTagDraft('')
+   861→        setCPrice('0')
+   862→        setCContent('')
+   863→        toast({ title: 'Content published', description: 'Your expert content is live in the marketplace.' })
+   864→      }
+   865→      await onCreated()
+   866→    } catch (e) {
+   867→      toast({ title: 'Failed to publish', description: (e as Error).message, variant: 'destructive' })
+   868→    } finally {
+   869→      setBusy(false)
+   870→    }
+   871→  }
+   872→
+   873→  return (
+   874→    <Card className="bg-card/60 backdrop-blur-sm border-border/70">
+   875→      <CardHeader>
+   876→        <CardTitle className="text-base flex items-center gap-2">
+   877→          <Plus className="h-4 w-4 text-brand" />
+   878→          Publish a new item
+   879→        </CardTitle>
+   880→        <CardDescription>
+   881→          Share your work with the CareerOS community. Free items grow your audience; paid items earn you revenue.
+   882→        </CardDescription>
+   883→      </CardHeader>
+   884→      <CardContent className="space-y-4">
+   885→        {/* Kind toggle */}
+   886→        <div className="flex items-center gap-1 rounded-lg border border-border bg-background/60 p-1 w-fit">
+   887→          <button
+   888→            type="button"
+   889→            onClick={() => setKind('template')}
+   890→            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+   891→              kind === 'template' ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+   892→            }`}
+   893→          >
+   894→            <Package className="h-3.5 w-3.5" /> Template
+   895→          </button>
+   896→          <button
+   897→            type="button"
+   898→            onClick={() => setKind('content')}
+   899→            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition ${
+   900→              kind === 'content' ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+   901→            }`}
+   902→          >
+   903→            <BookOpen className="h-3.5 w-3.5" /> Expert Content
+   904→          </button>
+   905→        </div>
+   906→
+   907→        {kind === 'template' ? (
+   908→          <>
+   909→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   910→              <div className="space-y-1.5">
+   911→                <Label className="text-xs">Type</Label>
+   912→                <Select value={tType} onValueChange={(v) => setTType(v as typeof tType)}>
+   913→                  <SelectTrigger className="h-9 w-full">
+   914→                    <SelectValue />
+   915→                  </SelectTrigger>
+   916→                  <SelectContent>
+   917→                    <SelectItem value="resume">Resume Template</SelectItem>
+   918→                    <SelectItem value="portfolio">Portfolio Theme</SelectItem>
+   919→                    <SelectItem value="cover_letter">Cover Letter</SelectItem>
+   920→                  </SelectContent>
+   921→                </Select>
+   922→              </div>
+   923→              <div className="space-y-1.5">
+   924→                <Label className="text-xs">Category</Label>
+   925→                <Input
+   926→                  value={tCategory}
+   927→                  onChange={(e) => setTCategory(e.target.value)}
+   928→                  placeholder="e.g. Engineering, Design, Executive"
+   929→                  className="h-9"
+   930→                />
+   931→              </div>
+   932→            </div>
+   933→            <div className="space-y-1.5">
+   934→              <Label className="text-xs">Name</Label>
+   935→              <Input value={tName} onChange={(e) => setTName(e.target.value)} placeholder="e.g. Tech Resume Pro" className="h-9" />
+   936→            </div>
+   937→            <div className="space-y-1.5">
+   938→              <Label className="text-xs">Description</Label>
+   939→              <Textarea
+   940→                value={tDesc}
+   941→                onChange={(e) => setTDesc(e.target.value)}
+   942→                placeholder="What makes this template special? Who is it for?"
+   943→                rows={2}
+   944→                className="resize-none text-sm"
+   945→              />
+   946→            </div>
+   947→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   948→              <div className="space-y-1.5">
+   949→                <Label className="text-xs">Price (USD, 0 = free)</Label>
+   950→                <Input
+   951→                  type="number"
+   952→                  min="0"
+   953→                  value={tPrice}
+   954→                  onChange={(e) => setTPrice(e.target.value)}
+   955→                  className="h-9"
+   956→                />
+   957→              </div>
+   958→              <div className="flex items-end gap-4 pb-1">
+   959→                <label className="flex items-center gap-2 text-xs">
+   960→                  <Switch checked={tPublished} onCheckedChange={setTPublished} />
+   961→                  Published
+   962→                </label>
+   963→                <label className="flex items-center gap-2 text-xs">
+   964→                  <Switch checked={tFeatured} onCheckedChange={setTFeatured} />
+   965→                  Featured
+   966→                </label>
+   967→              </div>
+   968→            </div>
+   969→            <div className="space-y-1.5">
+   970→              <Label className="text-xs">Template config (JSON, optional)</Label>
+   971→              <Textarea
+   972→                value={tConfig}
+   973→                onChange={(e) => setTConfig(e.target.value)}
+   974→                placeholder={'{\n  "template": "modern",\n  "accent": "emerald",\n  "sampleData": { ... }\n}'}
+   975→                rows={4}
+   976→                className="resize-none font-mono text-xs"
+   977→              />
+   978→              <p className="text-[10px] text-muted-foreground">
+   979→                For resume templates, include <code>template</code>, <code>accent</code>, and <code>sampleData</code> — installing will create a new resume.
+   980→              </p>
+   981→            </div>
+   982→          </>
+   983→        ) : (
+   984→          <>
+   985→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+   986→              <div className="space-y-1.5">
+   987→                <Label className="text-xs">Type</Label>
+   988→                <Select value={cType} onValueChange={(v) => setCType(v as typeof cType)}>
+   989→                  <SelectTrigger className="h-9 w-full">
+   990→                    <SelectValue />
+   991→                  </SelectTrigger>
+   992→                  <SelectContent>
+   993→                    <SelectItem value="guide">Guide</SelectItem>
+   994→                    <SelectItem value="course">Course</SelectItem>
+   995→                    <SelectItem value="template">Template Pack</SelectItem>
+   996→                    <SelectItem value="coaching_pack">Coaching Pack</SelectItem>
+   997→                  </SelectContent>
+   998→                </Select>
+   999→              </div>
+  1000→              <div className="space-y-1.5">
+  1001→                <Label className="text-xs">Price (USD, 0 = free)</Label>
+  1002→                <Input
+  1003→                  type="number"
+  1004→                  min="0"
+  1005→                  value={cPrice}
+  1006→                  onChange={(e) => setCPrice(e.target.value)}
+  1007→                  className="h-9"
+  1008→                />
+  1009→              </div>
+  1010→            </div>
+  1011→            <div className="space-y-1.5">
+  1012→              <Label className="text-xs">Title</Label>
+  1013→              <Input value={cTitle} onChange={(e) => setCTitle(e.target.value)} placeholder="e.g. System Design Interview Guide" className="h-9" />
+  1014→            </div>
+  1015→            <div className="space-y-1.5">
+  1016→              <Label className="text-xs">Description</Label>
+  1017→              <Textarea
+  1018→                value={cDesc}
+  1019→                onChange={(e) => setCDesc(e.target.value)}
+  1020→                placeholder="A short pitch — what will readers learn?"
+  1021→                rows={2}
+  1022→                className="resize-none text-sm"
+  1023→              />
+  1024→            </div>
+  1025→            <div className="space-y-1.5">
+  1026→              <Label className="text-xs">Tags</Label>
+  1027→              <div className="flex gap-2">
+  1028→                <Input
+  1029→                  value={cTagDraft}
+  1030→                  onChange={(e) => setCTagDraft(e.target.value)}
+  1031→                  onKeyDown={(e) => {
+  1032→                    if (e.key === 'Enter') {
+  1033→                      e.preventDefault()
+  1034→                      addTag()
+  1035→                    }
+  1036→                  }}
+  1037→                  placeholder="Add a tag and press Enter"
+  1038→                  className="h-9"
+  1039→                />
+  1040→                <Button type="button" size="sm" variant="outline" onClick={addTag} className="h-9">
+  1041→                  Add
+  1042→                </Button>
+  1043→              </div>
+  1044→              {cTags.length > 0 && (
+  1045→                <div className="flex flex-wrap gap-1.5">
+  1046→                  {cTags.map((tag) => (
+  1047→                    <Badge key={tag} variant="outline" className="text-[11px] gap-1">
+  1048→                      {tag}
+  1049→                      <button
+  1050→                        type="button"
+  1051→                        onClick={() => setCTags(cTags.filter((t) => t !== tag))}
+  1052→                        className="text-muted-foreground hover:text-destructive"
+  1053→                        aria-label={`Remove ${tag}`}
+  1054→                      >
+  1055→                        ×
+  1056→                      </button>
+  1057→                    </Badge>
+  1058→                  ))}
+  1059→                </div>
+  1060→              )}
+  1061→            </div>
+  1062→            <div className="space-y-1.5">
+  1063→              <Label className="text-xs">Content (Markdown)</Label>
+  1064→              <Textarea
+  1065→                value={cContent}
+  1066→                onChange={(e) => setCContent(e.target.value)}
+  1067→                placeholder={'# Your guide title\n\n## Section 1\nWrite your content here…'}
+  1068→                rows={6}
+  1069→                className="resize-none font-mono text-xs"
+  1070→              />
+  1071→            </div>
+  1072→            <div className="flex items-center gap-2">
+  1073→              <label className="flex items-center gap-2 text-xs">
+  1074→                <Switch checked={cPublished} onCheckedChange={setCPublished} />
+  1075→                Published
+  1076→              </label>
+  1077→            </div>
+  1078→          </>
+  1079→        )}
+  1080→
+  1081→        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+  1082→          <p className="text-[11px] text-muted-foreground">
+  1083→            Publishing as <span className="font-medium text-foreground">{user?.name || 'you'}</span>
+  1084→          </p>
+  1085→          <Button
+  1086→            size="sm"
+  1087→            className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+  1088→            disabled={busy}
+  1089→            onClick={submit}
+  1090→          >
+  1091→            {busy ? <Spinner className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+  1092→            Publish
+  1093→          </Button>
+  1094→        </div>
+  1095→      </CardContent>
+  1096→    </Card>
+  1097→  )
+  1098→}
+  1099→
+  1100→// Avoids importing the ProfileProvider context just to read a name — we only need the name for a label.
+  1101→// Falling back to a local fetch keeps this module self-contained.
+  1102→function useProfileSafe() {
+  1103→  const [user, setUser] = useState<{ name: string | null } | null>(null)
+  1104→  useEffect(() => {
+  1105→    api<{ user: { name: string } }>('/api/profile')
+  1106→      .then((res) => setUser({ name: res.user?.name ?? null }))
+  1107→      .catch(() => setUser({ name: null }))
+  1108→  }, [])
+  1109→  return { user }
+  1110→}
+  1111→
+  1112→// ---------------------------------------------------------------------------
+  1113→// Creator dashboard
+  1114→// ---------------------------------------------------------------------------
+  1115→
+  1116→function CreatorDashboard({
+  1117→  mine,
+  1118→  onDelete,
+  1119→  onTogglePublish,
+  1120→}: {
+  1121→  mine: { templates: Template[]; content: Content[] }
+  1122→  onDelete: (item: Item) => Promise<void>
+  1123→  onTogglePublish: (item: Item) => Promise<void>
+  1124→}) {
+  1125→  const total = mine.templates.length + mine.content.length
+  1126→  const totalDownloads = mine.templates.reduce((s, t) => s + t.downloads, 0)
+  1127→  const totalEnrollments = mine.content.reduce((s, c) => s + c.enrollments, 0)
+  1128→  const totalRevenue = [...mine.templates, ...mine.content].reduce((s, i) => s + i.price * (i.kind === 'template' ? i.downloads : i.enrollments), 0) / 100
+  1129→
+  1130→  if (total === 0) {
+  1131→    return (
+  1132→      <Card className="bg-card/40 border-dashed">
+  1133→        <CardContent className="p-8 text-center">
+  1134→          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-soft text-brand ring-1 ring-brand/20">
+  1135→            <Sparkles className="h-5 w-5" />
+  1136→          </div>
+  1137→          <h3 className="text-sm font-semibold mb-1">No published items yet</h3>
+  1138→          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+  1139→            Use the form on the left to publish your first template or expert guide. Your items will appear here with live stats.
+  1140→          </p>
+  1141→        </CardContent>
+  1142→      </Card>
+  1143→    )
+  1144→  }
+  1145→
+  1146→  return (
+  1147→    <div className="space-y-4">
+  1148→      {/* Stats */}
+  1149→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1150→        <Card className="bg-card/60 border-border/70">
+  1151→          <CardContent className="p-3">
+  1152→            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Items</div>
+  1153→            <div className="text-xl font-semibold text-brand">{total}</div>
+  1154→          </CardContent>
+  1155→        </Card>
+  1156→        <Card className="bg-card/60 border-border/70">
+  1157→          <CardContent className="p-3">
+  1158→            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Downloads</div>
+  1159→            <div className="text-xl font-semibold">{formatCount(totalDownloads)}</div>
+  1160→          </CardContent>
+  1161→        </Card>
+  1162→        <Card className="bg-card/60 border-border/70">
+  1163→          <CardContent className="p-3">
+  1164→            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Enrollments</div>
+  1165→            <div className="text-xl font-semibold">{formatCount(totalEnrollments)}</div>
+  1166→          </CardContent>
+  1167→        </Card>
+  1168→        <Card className="bg-card/60 border-border/70">
+  1169→          <CardContent className="p-3">
+  1170→            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Est. Revenue</div>
+  1171→            <div className="text-xl font-semibold">${totalRevenue.toFixed(0)}</div>
+  1172→          </CardContent>
+  1173→        </Card>
+  1174→      </div>
+  1175→
+  1176→      {/* Templates */}
+  1177→      {mine.templates.length > 0 && (
+  1178→        <div className="space-y-2">
+  1179→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Your Templates</h4>
+  1180→          {mine.templates.map((t) => {
+  1181→            const accent = ACCENT_STYLES[accentOf(t)]
+  1182→            const Icon = typeMeta(t.type).icon
+  1183→            return (
+  1184→              <motion.div key={t.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+  1185→                <Card className="bg-card/60 border-border/70">
+  1186→                  <CardContent className="p-3 flex items-center gap-3">
+  1187→                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${accent.soft} ${accent.text} ring-1 ${accent.ring}`}>
+  1188→                      <Icon className="h-4 w-4" />
+  1189→                    </div>
+  1190→                    <div className="flex-1 min-w-0">
+  1191→                      <div className="flex items-center gap-2">
+  1192→                        <span className="font-medium text-sm truncate">{t.name}</span>
+  1193→                        {t.featured && <Badge className="bg-amber-500/90 text-white border-0 text-[9px] px-1 py-0">Featured</Badge>}
+  1194→                        <Badge variant={t.published ? 'default' : 'secondary'} className="text-[9px] px-1 py-0">
+  1195→                          {t.published ? 'Live' : 'Draft'}
+  1196→                        </Badge>
+  1197→                      </div>
+  1198→                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+  1199→                        <span className="inline-flex items-center gap-1"><Download className="h-3 w-3" />{formatCount(t.downloads)}</span>
+  1200→                        <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-500" />{t.rating.toFixed(1)}</span>
+  1201→                        <span>{t.priceDisplay}</span>
+  1202→                      </div>
+  1203→                    </div>
+  1204→                    <div className="flex items-center gap-1">
+  1205→                      <Button
+  1206→                        size="sm"
+  1207→                        variant="ghost"
+  1208→                        className="h-8 px-2 text-xs"
+  1209→                        onClick={() => onTogglePublish(t)}
+  1210→                      >
+  1211→                        {t.published ? 'Unpublish' : 'Publish'}
+  1212→                      </Button>
+  1213→                      <Button
+  1214→                        size="icon"
+  1215→                        variant="ghost"
+  1216→                        className="h-8 w-8 text-destructive hover:text-destructive"
+  1217→                        onClick={() => onDelete(t)}
+  1218→                        aria-label="Delete"
+  1219→                      >
+  1220→                        <Trash2 className="h-3.5 w-3.5" />
+  1221→                      </Button>
+  1222→                    </div>
+  1223→                  </CardContent>
+  1224→                </Card>
+  1225→              </motion.div>
+  1226→            )
+  1227→          })}
+  1228→        </div>
+  1229→      )}
+  1230→
+  1231→      {/* Content */}
+  1232→      {mine.content.length > 0 && (
+  1233→        <div className="space-y-2">
+  1234→          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Your Expert Content</h4>
+  1235→          {mine.content.map((c) => {
+  1236→            const accent = ACCENT_STYLES[accentOf(c)]
+  1237→            const Icon = typeMeta(c.type).icon
+  1238→            return (
+  1239→              <motion.div key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+  1240→                <Card className="bg-card/60 border-border/70">
+  1241→                  <CardContent className="p-3 flex items-center gap-3">
+  1242→                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${accent.soft} ${accent.text} ring-1 ${accent.ring}`}>
+  1243→                      <Icon className="h-4 w-4" />
+  1244→                    </div>
+  1245→                    <div className="flex-1 min-w-0">
+  1246→                      <div className="flex items-center gap-2">
+  1247→                        <span className="font-medium text-sm truncate">{c.title}</span>
+  1248→                        <Badge variant={c.published ? 'default' : 'secondary'} className="text-[9px] px-1 py-0">
+  1249→                          {c.published ? 'Live' : 'Draft'}
+  1250→                        </Badge>
+  1251→                      </div>
+  1252→                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
+  1253→                        <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{formatCount(c.enrollments)}</span>
+  1254→                        <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-500" />{c.rating.toFixed(1)}</span>
+  1255→                        <span>{c.priceDisplay}</span>
+  1256→                      </div>
+  1257→                    </div>
+  1258→                    <div className="flex items-center gap-1">
+  1259→                      <Button
+  1260→                        size="sm"
+  1261→                        variant="ghost"
+  1262→                        className="h-8 px-2 text-xs"
+  1263→                        onClick={() => onTogglePublish(c)}
+  1264→                      >
+  1265→                        {c.published ? 'Unpublish' : 'Publish'}
+  1266→                      </Button>
+  1267→                      <Button
+  1268→                        size="icon"
+  1269→                        variant="ghost"
+  1270→                        className="h-8 w-8 text-destructive hover:text-destructive"
+  1271→                        onClick={() => onDelete(c)}
+  1272→                        aria-label="Delete"
+  1273→                      >
+  1274→                        <Trash2 className="h-3.5 w-3.5" />
+  1275→                      </Button>
+  1276→                    </div>
+  1277→                  </CardContent>
+  1278→                </Card>
+  1279→              </motion.div>
+  1280→            )
+  1281→          })}
+  1282→        </div>
+  1283→      )}
+  1284→    </div>
+  1285→  )
+  1286→}
+  1287→
+  1288→// ---------------------------------------------------------------------------
+  1289→// Root module
+  1290→// ---------------------------------------------------------------------------
+  1291→
+  1292→export function MarketplaceModule() {
+  1293→  const { t } = useApp()
+  1294→  const { toast } = useToast()
+  1295→  const [data, setData] = useState<MarketplaceData | null>(null)
+  1296→  const [loading, setLoading] = useState(true)
+  1297→  const [activeTab, setActiveTab] = useState('templates')
+  1298→
+  1299→  const [typeFilter, setTypeFilter] = useState('all')
+  1300→  const [categoryFilter, setCategoryFilter] = useState('all')
+  1301→  const [search, setSearch] = useState('')
+  1302→
+  1303→  const [installingId, setInstallingId] = useState<string | null>(null)
+  1304→  const [preview, setPreview] = useState<Item | null>(null)
+  1305→  const [previewOpen, setPreviewOpen] = useState(false)
+  1306→
+  1307→  useEffect(() => {
+  1308→    api<MarketplaceData>('/api/marketplace')
+  1309→      .then((res) => {
+  1310→        setData(res)
+  1311→        setLoading(false)
+  1312→      })
+  1313→      .catch(() => setLoading(false))
+  1314→  }, [])
+  1315→
+  1316→  const refresh = async () => {
+  1317→    const res = await api<MarketplaceData>('/api/marketplace')
+  1318→    setData(res)
+  1319→  }
+  1320→
+  1321→  const categories = useMemo(() => {
+  1322→    const set = new Set<string>()
+  1323→    data?.templates.forEach((t) => t.category && set.add(t.category))
+  1324→    return Array.from(set).sort()
+  1325→  }, [data?.templates])
+  1326→
+  1327→  const featured = useMemo(
+  1328→    () => (data?.templates ?? []).filter((t) => t.featured),
+  1329→    [data?.templates]
+  1330→  )
+  1331→
+  1332→  const filteredTemplates = useMemo(() => {
+  1333→    if (!data) return []
+  1334→    return data.templates.filter((t) => {
+  1335→      if (typeFilter !== 'all' && t.type !== typeFilter) return false
+  1336→      if (categoryFilter !== 'all' && t.category !== categoryFilter) return false
+  1337→      if (search.trim()) {
+  1338→        const q = search.toLowerCase()
+  1339→        const hay = `${t.name} ${t.description ?? ''} ${t.creatorName ?? ''} ${t.category ?? ''}`.toLowerCase()
+  1340→        if (!hay.includes(q)) return false
+  1341→      }
+  1342→      return true
+  1343→    })
+  1344→  }, [data, typeFilter, categoryFilter, search])
+  1345→
+  1346→  const filteredContent = useMemo(() => {
+  1347→    if (!data) return []
+  1348→    if (!search.trim()) return data.content
+  1349→    const q = search.toLowerCase()
+  1350→    return data.content.filter((c) =>
+  1351→      `${c.title} ${c.description ?? ''} ${c.creatorName ?? ''} ${c.tags.join(' ')}`.toLowerCase().includes(q)
+  1352→    )
+  1353→  }, [data, search])
+  1354→
+  1355→  const openPreview = (item: Item) => {
+  1356→    setPreview(item)
+  1357→    setPreviewOpen(true)
+  1358→  }
+  1359→
+  1360→  const installTemplate = async (tpl: Template) => {
+  1361→    setInstallingId(tpl.id)
+  1362→    try {
+  1363→      const res = await api<{ ok: boolean; created?: { kind: string; title?: string } }>(
+  1364→        `/api/marketplace/${tpl.id}/install`,
+  1365→        { method: 'POST' }
+  1366→      )
+  1367→      if (res.created?.kind === 'resume') {
+  1368→        toast({
+  1369→          title: 'Template installed',
+  1370→          description: `New resume "${res.created.title || tpl.name}" created from this template.`,
+  1371→        })
+  1372→      } else if (res.created?.kind === 'portfolio') {
+  1373→        toast({
+  1374→          title: 'Theme installed',
+  1375→          description: `New portfolio "${res.created.title || tpl.name}" created from this theme.`,
+  1376→        })
+  1377→      } else if (res.created?.kind === 'cover_letter') {
+  1378→        toast({
+  1379→          title: 'Cover letter installed',
+  1380→          description: 'A new cover letter was created from this template.',
+  1381→        })
+  1382→      } else {
+  1383→        toast({ title: 'Installed', description: 'Template added to your library.' })
+  1384→      }
+  1385→      // Update local download count.
+  1386→      setData((d) =>
+  1387→        d
+  1388→          ? {
+  1389→              ...d,
+  1390→              templates: d.templates.map((t) =>
+  1391→                t.id === tpl.id ? { ...t, downloads: t.downloads + 1 } : t
+  1392→              ),
+  1393→            }
+  1394→          : d
+  1395→      )
+  1396→      setPreviewOpen(false)
+  1397→    } catch (e) {
+  1398→      toast({ title: 'Install failed', description: (e as Error).message, variant: 'destructive' })
+  1399→    } finally {
+  1400→      setInstallingId(null)
+  1401→    }
+  1402→  }
+  1403→
+  1404→  const enrollContent = async (c: Content) => {
+  1405→    setInstallingId(c.id)
+  1406→    try {
+  1407→      await api(`/api/marketplace/${c.id}/install`, { method: 'POST' })
+  1408→      toast({
+  1409→        title: 'Enrolled',
+  1410→        description: `You now have access to "${c.title}".`,
+  1411→      })
+  1412→      setData((d) =>
+  1413→        d
+  1414→          ? {
+  1415→              ...d,
+  1416→              content: d.content.map((x) =>
+  1417→                x.id === c.id ? { ...x, enrollments: x.enrollments + 1 } : x
+  1418→              ),
+  1419→            }
+  1420→          : d
+  1421→      )
+  1422→      setPreviewOpen(false)
+  1423→    } catch (e) {
+  1424→      toast({ title: 'Enrollment failed', description: (e as Error).message, variant: 'destructive' })
+  1425→    } finally {
+  1426→      setInstallingId(null)
+  1427→    }
+  1428→  }
+  1429→
+  1430→  const handleAction = (item: Item) => {
+  1431→    if (item.kind === 'template') installTemplate(item)
+  1432→    else enrollContent(item)
+  1433→  }
+  1434→
+  1435→  const deleteItem = async (item: Item) => {
+  1436→    if (!confirm(`Delete "${item.kind === 'template' ? item.name : item.title}"? This cannot be undone.`)) return
+  1437→    try {
+  1438→      await api(`/api/marketplace/${item.id}`, { method: 'DELETE' })
+  1439→      toast({ title: 'Deleted', description: 'Your item has been removed from the marketplace.' })
+  1440→      await refresh()
+  1441→    } catch (e) {
+  1442→      toast({ title: 'Delete failed', description: (e as Error).message, variant: 'destructive' })
+  1443→    }
+  1444→  }
+  1445→
+  1446→  const togglePublish = async (item: Item) => {
+  1447→    try {
+  1448→      await api(`/api/marketplace/${item.id}`, {
+  1449→        method: 'PUT',
+  1450→        body: { published: !item.published },
+  1451→      })
+  1452→      toast({
+  1453→        title: item.published ? 'Unpublished' : 'Published',
+  1454→        description: item.published ? 'Item is now a draft.' : 'Item is now live in the marketplace.',
+  1455→      })
+  1456→      await refresh()
+  1457→    } catch (e) {
+  1458→      toast({ title: 'Update failed', description: (e as Error).message, variant: 'destructive' })
+  1459→    }
+  1460→  }
+  1461→
+  1462→  return (
+  1463→    <div>
+  1464→      <ModuleHeader
+  1465→        title={t('marketplaceTitle')}
+  1466→        subtitle={t('marketplaceSub')}
+  1467→        icon={ShoppingBag}
+  1468→        actions={
+  1469→          data ? (
+  1470→            <div className="hidden sm:flex items-center gap-2 rounded-full border bg-card/60 px-3 py-1.5 text-xs">
+  1471→              <Package className="h-3.5 w-3.5 text-brand" />
+  1472→              <span className="font-medium">{data.templates.length}</span>
+  1473→              <span className="text-muted-foreground">templates</span>
+  1474→              <span className="mx-1 h-3 w-px bg-border" />
+  1475→              <BookOpen className="h-3.5 w-3.5 text-brand" />
+  1476→              <span className="font-medium">{data.content.length}</span>
+  1477→              <span className="text-muted-foreground">guides</span>
+  1478→            </div>
+  1479→          ) : null
+  1480→        }
+  1481→      />
+  1482→
+  1483→      {loading || !data ? (
+  1484→        <div className="flex justify-center py-16">
+  1485→          <Spinner className="h-6 w-6 text-brand" />
+  1486→        </div>
+  1487→      ) : (
+  1488→        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+  1489→          <TabsList className="grid w-full max-w-md grid-cols-3 mb-5">
+  1490→            <TabsTrigger value="templates">Templates</TabsTrigger>
+  1491→            <TabsTrigger value="content">Expert Content</TabsTrigger>
+  1492→            <TabsTrigger value="creator">Become a Creator</TabsTrigger>
+  1493→          </TabsList>
+  1494→
+  1495→          <TabsContent value="templates" className="space-y-5">
+  1496→            {featured.length > 0 && (
+  1497→              <FeaturedCarousel
+  1498→                items={featured}
+  1499→                onInstall={installTemplate}
+  1500→                onPreview={openPreview}
+  1501→                installingId={installingId}
+  1502→              />
+  1503→            )}
+  1504→
+  1505→            <FilterBar
+  1506→              typeFilter={typeFilter}
+  1507→              setTypeFilter={setTypeFilter}
+  1508→              categoryFilter={categoryFilter}
+  1509→              setCategoryFilter={setCategoryFilter}
+  1510→              categories={categories}
+  1511→              search={search}
+  1512→              setSearch={setSearch}
+  1513→            />
+  1514→
+  1515→            {filteredTemplates.length === 0 ? (
+  1516→              <Card>
+  1517→                <CardContent className="p-10 text-center text-sm text-muted-foreground">
+  1518→                  No templates match your filters. Try clearing the search or switching category.
+  1519→                </CardContent>
+  1520→              </Card>
+  1521→            ) : (
+  1522→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  1523→                {filteredTemplates.map((tpl) => (
+  1524→                  <TemplateCard
+  1525→                    key={tpl.id}
+  1526→                    template={tpl}
+  1527→                    onInstall={installTemplate}
+  1528→                    onPreview={openPreview}
+  1529→                    isInstalling={installingId === tpl.id}
+  1530→                  />
+  1531→                ))}
+  1532→              </div>
+  1533→            )}
+  1534→          </TabsContent>
+  1535→
+  1536→          <TabsContent value="content" className="space-y-5">
+  1537→            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-1">
+  1538→              <Input
+  1539→                value={search}
+  1540→                onChange={(e) => setSearch(e.target.value)}
+  1541→                placeholder="Search courses, guides, creators…"
+  1542→                className="sm:max-w-xs h-9"
+  1543→              />
+  1544→              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+  1545→                <TrendingUp className="h-3.5 w-3.5 text-brand" />
+  1546→                <span>{filteredContent.length} expert {filteredContent.length === 1 ? 'item' : 'items'}</span>
+  1547→              </div>
+  1548→            </div>
+  1549→
+  1550→            {filteredContent.length === 0 ? (
+  1551→              <Card>
+  1552→                <CardContent className="p-10 text-center text-sm text-muted-foreground">
+  1553→                  No expert content matches your search.
+  1554→                </CardContent>
+  1555→              </Card>
+  1556→            ) : (
+  1557→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  1558→                {filteredContent.map((c) => (
+  1559→                  <ContentCard
+  1560→                    key={c.id}
+  1561→                    content={c}
+  1562→                    onEnroll={enrollContent}
+  1563→                    onPreview={openPreview}
+  1564→                    isEnrolling={installingId === c.id}
+  1565→                  />
+  1566→                ))}
+  1567→              </div>
+  1568→            )}
+  1569→          </TabsContent>
+  1570→
+  1571→          <TabsContent value="creator" className="space-y-5">
+  1572→            <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+  1573→              <CreatorForm onCreated={refresh} />
+  1574→              <div className="space-y-4">
+  1575→                <Card className="bg-gradient-to-br from-brand-soft/60 to-card/60 border-brand/20">
+  1576→                  <CardContent className="p-4">
+  1577→                    <div className="flex items-center gap-2 mb-2">
+  1578→                      <BadgeCheck className="h-4 w-4 text-brand" />
+  1579→                      <h4 className="text-sm font-semibold">Creator benefits</h4>
+  1580→                    </div>
+  1581→                    <ul className="space-y-2 text-xs text-muted-foreground">
+  1582→                      <li className="flex items-start gap-2">
+  1583→                        <Check className="h-3.5 w-3.5 text-brand mt-0.5 shrink-0" />
+  1584→                        Reach 50k+ ambitious professionals actively job-hunting.
+  1585→                      </li>
+  1586→                      <li className="flex items-start gap-2">
+  1587→                        <Check className="h-3.5 w-3.5 text-brand mt-0.5 shrink-0" />
+  1588→                        Earn 70% revenue share on every paid install + enrollment.
+  1589→                      </li>
+  1590→                      <li className="flex items-start gap-2">
+  1591→                        <Check className="h-3.5 w-3.5 text-brand mt-0.5 shrink-0" />
+  1592→                        Resume templates auto-create a Resume for the buyer — instant value.
+  1593→                      </li>
+  1594→                      <li className="flex items-start gap-2">
+  1595→                        <Check className="h-3.5 w-3.5 text-brand mt-0.5 shrink-0" />
+  1596→                        Featured placement for top-rated creators.
+  1597→                      </li>
+  1598→                    </ul>
+  1599→                  </CardContent>
+  1600→                </Card>
+  1601→
+  1602→                <div>
+  1603→                  <div className="flex items-center justify-between mb-2 px-1">
+  1604→                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Creator Dashboard</h4>
+  1605→                    {data.mine.templates.length + data.mine.content.length > 0 && (
+  1606→                      <Badge variant="outline" className="text-[10px]">
+  1607→                        {data.mine.templates.length + data.mine.content.length} live
+  1608→                      </Badge>
+  1609→                    )}
+  1610→                  </div>
+  1611→                  <CreatorDashboard
+  1612→                    mine={data.mine}
+  1613→                    onDelete={deleteItem}
+  1614→                    onTogglePublish={togglePublish}
+  1615→                  />
+  1616→                </div>
+  1617→              </div>
+  1618→            </div>
+  1619→          </TabsContent>
+  1620→        </Tabs>
+  1621→      )}
+  1622→
+  1623→      <ItemDialog
+  1624→        item={preview}
+  1625→        open={previewOpen}
+  1626→        onOpenChange={setPreviewOpen}
+  1627→        onAction={handleAction}
+  1628→        isBusy={preview ? installingId === preview.id : false}
+  1629→      />
+  1630→    </div>
+  1631→  )
+  1632→}
+  1633→

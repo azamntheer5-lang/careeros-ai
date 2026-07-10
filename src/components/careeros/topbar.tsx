@@ -10,11 +10,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Bell, Command } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 
 export function Topbar() {
   const { t } = useApp()
   const { active, setPalette } = useAppStore()
   const { user } = useProfile()
+  const { toast } = useToast()
   const userName = user?.name || 'Guest'
   const plan = user?.plan || 'free'
 
@@ -46,9 +48,10 @@ export function Topbar() {
             <Command className="h-3.5 w-3.5" />
             <kbd className="rounded border bg-muted px-1 py-0.5 text-[9px] font-mono">⌘K</kbd>
           </Button>
-          <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Notifications">
+          <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full" aria-label="Notifications"
+            onClick={() => toast({ title: 'No new notifications', description: 'You are all caught up.' })}
+          >
             <Bell className="h-4 w-4" />
-            <span className="absolute top-2 end-2 h-1.5 w-1.5 rounded-full bg-brand" />
           </Button>
           <LangToggle />
           <ThemeToggle />

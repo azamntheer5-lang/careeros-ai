@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useApp } from '@/components/app-provider'
@@ -18,7 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sparkles, Wand2, FileText, Target, AlertCircle, CheckCircle2, Copy,
   Download, Globe, Zap, ChevronRight, RefreshCw, ArrowUp, ArrowDown,
-  Trash2, Copy as Duplicate, Brain, Award, Languages, FileType,
+  Trash2, Copy as Duplicate, Brain, Award, Languages, FileType, Save,
 } from 'lucide-react'
 
 // ─── Types ─────────────────────────────────────────────────────────
@@ -54,6 +54,10 @@ type StudioResult = {
   enrichmentNotes: string[]
   detectedLanguage: string
   wasEnriched: boolean
+  profession?: string
+  seniority?: string
+  industry?: string
+  confidence?: Record<string, 'high' | 'medium' | 'low'>
   aiCalls?: number
   tokensUsed?: number
   latencyMs?: number
@@ -62,10 +66,10 @@ type StudioResult = {
 type PipelineStage = 'idle' | 'parsing' | 'enriching' | 'optimizing' | 'scoring' | 'done'
 
 const STAGES: { id: PipelineStage; label: string; icon: any }[] = [
-  { id: 'parsing', label: 'Parsing text', icon: FileText },
-  { id: 'enriching', label: 'Enriching content', icon: Sparkles },
-  { id: 'optimizing', label: 'ATS optimization', icon: Target },
-  { id: 'scoring', label: 'Scoring resume', icon: Award },
+  { id: 'parsing', label: 'OCR cleanup & language detection', icon: FileText },
+  { id: 'enriching', label: 'AI parsing & enrichment', icon: Sparkles },
+  { id: 'optimizing', label: 'Dedup & ATS optimization', icon: Target },
+  { id: 'scoring', label: 'Quality scoring & keywords', icon: Award },
   { id: 'done', label: 'Complete', icon: CheckCircle2 },
 ]
 
@@ -80,8 +84,13 @@ export function ResumeStudioModule() {
   const [result, setResult] = useState<StudioResult | null>(null)
   const [stage, setStage] = useState<PipelineStage>('idle')
   const [activeTab, setActiveTab] = useState('preview')
-  const [editingSection, setEditingSection] = useState<string | null>(null)
   const [sectionBusy, setSectionBusy] = useState<string | null>(null)
+  const [undoStack, setUndoStack] = useState<StudioResult[]>([])
+  const [saved, setSaved] = useState(false)
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  // Clear all pending timers on unmount
+  useEffect(() => () => { timersRef.current.forEach(clearTimeout); timersRef.current = [] }, [])
 
   const generate = async () => {
     if (!rawText.trim()) {
@@ -89,42 +98,85 @@ export function ResumeStudioModule() {
       return
     }
     setResult(null)
+    setUndoStack([])
+    setSaved(false)
     setStage('parsing')
 
-    // Animate through stages — slower to match actual AI latency
-    setTimeout(() => setStage('enriching'), 5000)
-    setTimeout(() => setStage('optimizing'), 15000)
-    setTimeout(() => setStage('scoring'), 30000)
+    // Animate through stages with realistic timing. Timers are tracked so they
+    // can be cleared when the API returns (prevents stuck/wrong stage display).
+    const stageTimers: [PipelineStage, number][] = [
+      ['enriching', 4000],
+      ['optimizing', 12000],
+      ['scoring', 22000],
+    ]
+    timersRef.current.forEach(clearTimeout)
+    timersRef.current = stageTimers.map(([s, ms]) => setTimeout(() => setStage(s), ms))
 
     try {
       const res = await api<StudioResult>('/api/desktop/generate-resume-v2', {
         method: 'POST',
         body: { rawText, jobDescription: jobDescription || undefined, runQualityCheck: false },
       })
+      // Clear any pending stage timers — the real result is ready
+      timersRef.current.forEach(clearTimeout)
+      timersRef.current = []
       setResult(res)
       setStage('done')
       setActiveTab('preview')
       const overall = res.evaluation?.overall ?? res.score?.overall ?? 0
       toast({ title: 'Resume generated! 🎉', description: `Overall score: ${overall}/100 — ${res.aiCalls ?? 1} AI call, ${res.latencyMs ?? 0}ms` })
     } catch (e) {
+      timersRef.current.forEach(clearTimeout)
+      timersRef.current = []
       toast({ title: 'Generation failed', description: (e as Error).message, variant: 'destructive' })
       setStage('idle')
     }
   }
 
   const rewriteSection = async (section: string, content: any) => {
+    if (!result) return
     setSectionBusy(section)
+    // Push current state to undo stack before modifying
+    setUndoStack((stack) => [...stack, result])
     try {
       const { result: rewritten } = await api<{ result: any }>('/api/desktop/rewrite-section', {
         method: 'POST', body: { section, content, jobDescription: jobDescription || undefined },
       })
-      if (result) {
-        const updated = { ...result, resume: { ...result.resume, [section]: rewritten } }
-        setResult(updated)
-        toast({ title: 'Section rewritten', description: `${section} updated with AI.` })
-      }
+      setResult((prev) => prev ? { ...prev, resume: { ...prev.resume, [section]: rewritten }, wasEnriched: true } : prev)
+      setSaved(false) // Mark as unsaved after edit
+      toast({ title: 'Section rewritten', description: `${section} updated with AI. Undo available.` })
     } catch (e) {
+      // Rollback undo stack on failure
+      setUndoStack((stack) => stack.slice(0, -1))
       toast({ title: 'Rewrite failed', description: (e as Error).message, variant: 'destructive' })
+    }
+    setSectionBusy(null)
+  }
+
+  const undo = () => {
+    setUndoStack((stack) => {
+      if (stack.length === 0) return stack
+      const prev = stack[stack.length - 1]
+      setResult(prev)
+      setSaved(false)
+      toast({ title: 'Undone', description: 'Reverted to previous version.' })
+      return stack.slice(0, -1)
+    })
+  }
+
+  const saveResume = async () => {
+    if (!result) return
+    setSectionBusy('save')
+    try {
+      const name = result.resume?.contact?.name || 'Untitled'
+      await api('/api/resumes', {
+        method: 'POST',
+        body: { title: `${name} — AI Generated`, template: 'modern', accent: 'emerald', data: result.resume },
+      })
+      setSaved(true)
+      toast({ title: 'Saved! ✅', description: 'Resume saved to your library. Find it in Resume Engine.' })
+    } catch (e) {
+      toast({ title: 'Save failed', description: (e as Error).message, variant: 'destructive' })
     }
     setSectionBusy(null)
   }
@@ -198,8 +250,17 @@ export function ResumeStudioModule() {
   return (
     <div>
       <ModuleHeader title={t('studioTitle')} subtitle={t('studioSub')} icon={Sparkles}
-        actions={result && (
-          <div className="flex gap-2">
+        actions={result && stage === 'done' && (
+          <div className="flex flex-wrap gap-2">
+            {undoStack.length > 0 && (
+              <Button variant="outline" size="sm" className="rounded-full" onClick={undo} title="Undo last change">
+                <ArrowUp className="h-3.5 w-3.5" /> Undo
+              </Button>
+            )}
+            <Button variant={saved ? 'outline' : 'default'} size="sm" className="rounded-full" onClick={saveResume} disabled={sectionBusy === 'save' || saved}>
+              {sectionBusy === 'save' ? <Spinner /> : saved ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Save className="h-3.5 w-3.5" />}
+              {saved ? 'Saved' : 'Save'}
+            </Button>
             <Button variant="outline" size="sm" className="rounded-full" onClick={exportJSON}><Download className="h-3.5 w-3.5" /> JSON</Button>
             <Button variant="outline" size="sm" className="rounded-full" onClick={exportMarkdown}><FileType className="h-3.5 w-3.5" /> MD</Button>
             <Button variant="outline" size="sm" className="rounded-full" onClick={() => window.print()}><FileText className="h-3.5 w-3.5" /> PDF</Button>
@@ -285,11 +346,33 @@ export function ResumeStudioModule() {
         {/* Results */}
         {result && stage === 'done' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+            {/* Pipeline metadata bar */}
+            <div className="flex flex-wrap items-center gap-2 mb-4 text-xs">
+              {result.profession && <Badge variant="secondary">{result.profession}</Badge>}
+              {result.seniority && <Badge variant="secondary">{result.seniority}</Badge>}
+              {result.industry && <Badge variant="secondary">{result.industry}</Badge>}
+              <Badge variant="outline" className="uppercase">{result.detectedLanguage}</Badge>
+              {result.wasEnriched && <Badge className="bg-brand/15 text-brand border-brand/30"><Sparkles className="h-3 w-3" /> AI Enriched</Badge>}
+              {result.aiCalls != null && <Badge variant="outline">{result.aiCalls} AI call{result.aiCalls !== 1 ? 's' : ''}</Badge>}
+              {result.latencyMs != null && <Badge variant="outline">{(result.latencyMs / 1000).toFixed(1)}s</Badge>}
+            </div>
+
+            {/* Warnings (if any) */}
+            {result.warnings?.length > 0 && (
+              <Card className="mb-4 border-amber-500/30 bg-amber-500/5">
+                <CardContent className="p-3">
+                  <div className="flex items-center gap-2 mb-1"><AlertCircle className="h-4 w-4 text-amber-500" /><span className="text-sm font-semibold text-amber-700 dark:text-amber-400">Attention Needed</span></div>
+                  {result.warnings.map((w, i) => <div key={i} className="text-xs text-amber-700 dark:text-amber-400/80 flex gap-1.5"><span>•</span>{w}</div>)}
+                </CardContent>
+              </Card>
+            )}
+
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full max-w-lg grid-cols-4 mb-4">
+              <TabsList className="grid w-full max-w-2xl grid-cols-5 mb-4">
                 <TabsTrigger value="preview">Preview</TabsTrigger>
                 <TabsTrigger value="score">Score</TabsTrigger>
                 <TabsTrigger value="keywords">Keywords</TabsTrigger>
+                <TabsTrigger value="confidence">Confidence</TabsTrigger>
                 <TabsTrigger value="missing">Missing Info</TabsTrigger>
               </TabsList>
 
@@ -400,16 +483,6 @@ export function ResumeStudioModule() {
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* Enrichment Notes */}
-                {result.enrichmentNotes?.length > 0 && (
-                  <Card>
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2 mb-2"><Sparkles className="h-4 w-4 text-brand" /><span className="text-sm font-semibold">AI Enrichment Applied</span></div>
-                      {result.enrichmentNotes.map((n, i) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5"><CheckCircle2 className="h-3 w-3 text-brand mt-0.5" />{n}</div>)}
-                    </CardContent>
-                  </Card>
-                )}
               </TabsContent>
 
               {/* ─── Score Tab ─── */}
@@ -515,8 +588,67 @@ export function ResumeStudioModule() {
                 </div>
               </TabsContent>
 
+              {/* ─── Confidence Tab ─── */}
+              <TabsContent value="confidence" className="space-y-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2"><Brain className="h-4 w-4 text-brand" /> AI Confidence Analysis</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <p className="text-xs text-muted-foreground mb-3">Each field is rated by confidence: <span className="text-brand">high</span> (clearly stated in source), <span className="text-amber-500">medium</span> (inferred), <span className="text-destructive">low</span> (missing or uncertain). The AI never invents data — low-confidence fields need your input.</p>
+                    {result.confidence && Object.entries(result.confidence).map(([field, level]) => (
+                      <div key={field} className="flex items-center justify-between rounded-lg border p-2">
+                        <span className="text-xs font-medium">{field}</span>
+                        <Badge className={level === 'high' ? 'bg-brand/15 text-brand border-brand/30' : level === 'medium' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30' : 'bg-destructive/15 text-destructive border-destructive/30'} variant="outline">
+                          {level === 'high' ? <CheckCircle2 className="h-3 w-3" /> : level === 'medium' ? <AlertCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />} {level}
+                        </Badge>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {/* Enrichment notes — what the AI changed */}
+                {result.enrichmentNotes?.length > 0 && (
+                  <Card>
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Sparkles className="h-4 w-4 text-brand" /> AI Modifications (transparency)</CardTitle></CardHeader>
+                    <CardContent>
+                      {result.enrichmentNotes.map((n, i) => (
+                        <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1">
+                          <CheckCircle2 className="h-3 w-3 text-brand mt-0.5 shrink-0" />{n}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Hallucination check */}
+                {result.evaluation?.hallucinations?.length > 0 ? (
+                  <Card className="border-destructive/30">
+                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2 text-destructive"><AlertCircle className="h-4 w-4" /> Potential Fabrications Detected</CardTitle></CardHeader>
+                    <CardContent>
+                      {result.evaluation.hallucinations.map((h, i) => <div key={i} className="text-xs text-destructive flex gap-1.5 mb-1"><span>!</span>{h}</div>)}
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card className="border-brand/30 bg-brand/5">
+                    <CardContent className="p-3 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-brand" />
+                      <span className="text-sm text-brand">No fabrications detected — all data is sourced from your input.</span>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+
               {/* ─── Missing Info Tab ─── */}
               <TabsContent value="missing" className="space-y-4">
+                {result.missingInfo?.length === 0 ? (
+                  <Card className="border-brand/30 bg-brand/5">
+                    <CardContent className="p-4 flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-brand" />
+                      <span className="text-sm text-brand">All essential fields are present. Your resume is complete!</span>
+                    </CardContent>
+                  </Card>
+                ) : (
                 <Card>
                   <CardContent className="p-4">
                     <div className="flex items-center gap-2 mb-3"><AlertCircle className="h-4 w-4 text-amber-500" /><span className="text-sm font-semibold">Information You Should Add</span></div>
@@ -534,6 +666,7 @@ export function ResumeStudioModule() {
                     </div>
                   </CardContent>
                 </Card>
+                )}
               </TabsContent>
             </Tabs>
           </motion.div>

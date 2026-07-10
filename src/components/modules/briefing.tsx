@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useApp } from '@/components/app-provider'
@@ -128,7 +128,7 @@ export function BriefingModule() {
 
 function SpeakButton({ text }: { text: string }) {
   const [playing, setPlaying] = useState(false)
-  const audioRef = useState<HTMLAudioElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const speak = async () => {
     if (!text) return
     setPlaying(true)
@@ -137,10 +137,16 @@ function SpeakButton({ text }: { text: string }) {
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const audio = new Audio(url)
-      audio.onended = () => setPlaying(false)
-      audio.onerror = () => setPlaying(false)
+      audioRef.current = audio
+      audio.onended = () => { setPlaying(false); audioRef.current = null }
+      audio.onerror = () => { setPlaying(false); audioRef.current = null }
       await audio.play()
     } catch { setPlaying(false) }
   }
-  return <Button variant="ghost" size="sm" onClick={() => { if (playing) { audioRef[0]?.pause(); setPlaying(false) } else speak() }}><Volume2 className="h-3.5 w-3.5" />{playing ? 'Stop' : 'Listen'}</Button>
+  const stop = () => {
+    audioRef.current?.pause()
+    audioRef.current = null
+    setPlaying(false)
+  }
+  return <Button variant="ghost" size="sm" onClick={() => playing ? stop() : speak()}><Volume2 className="h-3.5 w-3.5" />{playing ? 'Stop' : 'Listen'}</Button>
 }

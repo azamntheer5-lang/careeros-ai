@@ -20,11 +20,38 @@ export function SecurityModule() {
   const { toast } = useToast()
   const [auditLogs, setAuditLogs] = useState<any[]>([])
   const [mfaEnabled, setMfaEnabled] = useState(false)
+  const [mfaBusy, setMfaBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  // Privacy preferences stored locally (no schema field yet)
+  const [aiTraining, setAiTraining] = useState(false)
+  const [analytics, setAnalytics] = useState(true)
 
   useEffect(() => {
     api<{ logs: any[] }>('/api/audit?limit=30').then(({ logs }) => setAuditLogs(logs)).catch(() => {})
+    api<{ mfaEnabled: boolean }>('/api/security/settings').then((r) => setMfaEnabled(r.mfaEnabled)).catch(() => {})
+    // Load local privacy prefs
+    try {
+      setAiTraining(localStorage.getItem('pref_ai_training') === '1')
+      setAnalytics(localStorage.getItem('pref_analytics') !== '0')
+    } catch {}
   }, [])
+
+  const toggleMfa = async (v: boolean) => {
+    setMfaBusy(true)
+    try {
+      await api('/api/security/settings', { method: 'PUT', body: { mfaEnabled: v } })
+      setMfaEnabled(v)
+      toast({ title: v ? 'MFA enabled' : 'MFA disabled', description: v ? 'You will need a TOTP code on next login.' : 'MFA has been turned off.' })
+    } catch (e) {
+      toast({ title: 'Failed to update MFA', description: (e as Error).message, variant: 'destructive' })
+    } finally { setMfaBusy(false) }
+  }
+
+  const savePrivacy = (key: string, value: boolean, setter: (v: boolean) => void) => {
+    try { localStorage.setItem(key, value ? '1' : '0') } catch {}
+    setter(value)
+    toast({ title: 'Preference saved', description: 'Stored locally on this device.' })
+  }
 
   const exportData = async () => {
     setExporting(true)
@@ -64,7 +91,7 @@ export function SecurityModule() {
                   <div className="text-sm font-medium">Multi-factor authentication</div>
                   <div className="text-xs text-muted-foreground">Add an extra layer of security with TOTP</div>
                 </div>
-                <Switch checked={mfaEnabled} onCheckedChange={(v) => { setMfaEnabled(v); toast({ title: v ? 'MFA enabled' : 'MFA disabled' }) }} />
+                <Switch checked={mfaEnabled} onCheckedChange={toggleMfa} disabled={mfaBusy} />
               </div>
               <div className="flex items-center justify-between">
                 <div>
@@ -85,11 +112,11 @@ export function SecurityModule() {
               </div>
               <div className="flex items-center justify-between">
                 <div><div className="text-sm font-medium">AI training data</div><div className="text-xs text-muted-foreground">Opt out of model improvement</div></div>
-                <Switch defaultChecked={false} onCheckedChange={() => toast({ title: 'Preference saved' })} />
+                <Switch checked={aiTraining} onCheckedChange={(v) => savePrivacy('pref_ai_training', v, setAiTraining)} />
               </div>
               <div className="flex items-center justify-between">
                 <div><div className="text-sm font-medium">Analytics tracking</div><div className="text-xs text-muted-foreground">Product usage analytics</div></div>
-                <Switch defaultChecked onCheckedChange={() => toast({ title: 'Preference saved' })} />
+                <Switch checked={analytics} onCheckedChange={(v) => savePrivacy('pref_analytics', v, setAnalytics)} />
               </div>
             </CardContent>
           </Card>

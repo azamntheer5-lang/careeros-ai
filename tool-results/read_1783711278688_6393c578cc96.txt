@@ -1,0 +1,580 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useCallback, useRef } from 'react'
+     4→     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→     5→import { api } from '@/lib/api-client'
+     6→     6→import { useApp } from '@/components/app-provider'
+     7→     7→import { useToast } from '@/hooks/use-toast'
+     8→     8→import { ModuleHeader } from '@/components/careeros/module-header'
+     9→     9→import { Spinner } from '@/components/careeros/loading'
+    10→    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Textarea } from '@/components/ui/textarea'
+    13→    13→import { Label } from '@/components/ui/label'
+    14→    14→import { Badge } from '@/components/ui/badge'
+    15→    15→import { Progress } from '@/components/ui/progress'
+    16→    16→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    17→    17→import { ScrollArea } from '@/components/ui/scroll-area'
+    18→    18→import {
+    19→    19→  Sparkles, Wand2, FileText, Target, AlertCircle, CheckCircle2, Copy,
+    20→    20→  Download, Globe, Zap, ChevronRight, RefreshCw, ArrowUp, ArrowDown,
+    21→    21→  Trash2, Copy as Duplicate, Brain, Award, Languages, FileType,
+    22→    22→} from 'lucide-react'
+    23→    23→
+    24→    24→// ─── Types ─────────────────────────────────────────────────────────
+    25→    25→
+    26→    26→type StudioResult = {
+    27→    27→  resume: any
+    28→    28→  evaluation?: {
+    29→    29→    overall: number
+    30→    30→    metrics: { name: string; score: number; details: string; passed: boolean }[]
+    31→    31→    hallucinations: string[]
+    32→    32→    missingFields: string[]
+    33→    33→    recommendations: string[]
+    34→    34→  }
+    35→    35→  score?: {
+    36→    36→    overall: number
+    37→    37→    atsScore: number
+    38→    38→    completeness: number
+    39→    39→    keywordScore: number
+    40→    40→    formattingScore: number
+    41→    41→    dimensions: { name: string; score: number; status: string }[]
+    42→    42→    quickWins: string[]
+    43→    43→    missingCritical: string[]
+    44→    44→  }
+    45→    45→  missingInfo: { field: string; question: string; priority: string; suggestion: string | null }[]
+    46→    46→  keywords: {
+    47→    47→    detected: string[]
+    48→    48→    suggested: string[]
+    49→    49→    industryTerms: string[]
+    50→    50→    actionVerbs: string[]
+    51→    51→    missingActionVerbs: string[]
+    52→    52→  }
+    53→    53→  warnings: string[]
+    54→    54→  enrichmentNotes: string[]
+    55→    55→  detectedLanguage: string
+    56→    56→  wasEnriched: boolean
+    57→    57→  aiCalls?: number
+    58→    58→  tokensUsed?: number
+    59→    59→  latencyMs?: number
+    60→    60→}
+    61→    61→
+    62→    62→type PipelineStage = 'idle' | 'parsing' | 'enriching' | 'optimizing' | 'scoring' | 'done'
+    63→    63→
+    64→    64→const STAGES: { id: PipelineStage; label: string; icon: any }[] = [
+    65→    65→  { id: 'parsing', label: 'Parsing text', icon: FileText },
+    66→    66→  { id: 'enriching', label: 'Enriching content', icon: Sparkles },
+    67→    67→  { id: 'optimizing', label: 'ATS optimization', icon: Target },
+    68→    68→  { id: 'scoring', label: 'Scoring resume', icon: Award },
+    69→    69→  { id: 'done', label: 'Complete', icon: CheckCircle2 },
+    70→    70→]
+    71→    71→
+    72→    72→// ─── Component ─────────────────────────────────────────────────────
+    73→    73→
+    74→    74→export function ResumeStudioModule() {
+    75→    75→  const { t } = useApp()
+    76→    76→  const { toast } = useToast()
+    77→    77→  const [rawText, setRawText] = useState('')
+    78→    78→  const [jobDescription, setJobDescription] = useState('')
+    79→    79→  const [showJD, setShowJD] = useState(false)
+    80→    80→  const [result, setResult] = useState<StudioResult | null>(null)
+    81→    81→  const [stage, setStage] = useState<PipelineStage>('idle')
+    82→    82→  const [activeTab, setActiveTab] = useState('preview')
+    83→    83→  const [editingSection, setEditingSection] = useState<string | null>(null)
+    84→    84→  const [sectionBusy, setSectionBusy] = useState<string | null>(null)
+    85→    85→
+    86→    86→  const generate = async () => {
+    87→    87→    if (!rawText.trim()) {
+    88→    88→      toast({ title: 'Text required', description: 'Paste your raw text to generate a resume.', variant: 'destructive' })
+    89→    89→      return
+    90→    90→    }
+    91→    91→    setResult(null)
+    92→    92→    setStage('parsing')
+    93→    93→
+    94→    94→    // Animate through stages — slower to match actual AI latency
+    95→    95→    setTimeout(() => setStage('enriching'), 5000)
+    96→    96→    setTimeout(() => setStage('optimizing'), 15000)
+    97→    97→    setTimeout(() => setStage('scoring'), 30000)
+    98→    98→
+    99→    99→    try {
+   100→   100→      const res = await api<StudioResult>('/api/desktop/generate-resume-v2', {
+   101→   101→        method: 'POST',
+   102→   102→        body: { rawText, jobDescription: jobDescription || undefined, runQualityCheck: false },
+   103→   103→      })
+   104→   104→      setResult(res)
+   105→   105→      setStage('done')
+   106→   106→      setActiveTab('preview')
+   107→   107→      const overall = res.evaluation?.overall ?? res.score?.overall ?? 0
+   108→   108→      toast({ title: 'Resume generated! 🎉', description: `Overall score: ${overall}/100 — ${res.aiCalls ?? 1} AI call, ${res.latencyMs ?? 0}ms` })
+   109→   109→    } catch (e) {
+   110→   110→      toast({ title: 'Generation failed', description: (e as Error).message, variant: 'destructive' })
+   111→   111→      setStage('idle')
+   112→   112→    }
+   113→   113→  }
+   114→   114→
+   115→   115→  const rewriteSection = async (section: string, content: any) => {
+   116→   116→    setSectionBusy(section)
+   117→   117→    try {
+   118→   118→      const { result: rewritten } = await api<{ result: any }>('/api/desktop/rewrite-section', {
+   119→   119→        method: 'POST', body: { section, content, jobDescription: jobDescription || undefined },
+   120→   120→      })
+   121→   121→      if (result) {
+   122→   122→        const updated = { ...result, resume: { ...result.resume, [section]: rewritten } }
+   123→   123→        setResult(updated)
+   124→   124→        toast({ title: 'Section rewritten', description: `${section} updated with AI.` })
+   125→   125→      }
+   126→   126→    } catch (e) {
+   127→   127→      toast({ title: 'Rewrite failed', description: (e as Error).message, variant: 'destructive' })
+   128→   128→    }
+   129→   129→    setSectionBusy(null)
+   130→   130→  }
+   131→   131→
+   132→   132→  const translateResume = async (targetLang: 'ar' | 'en') => {
+   133→   133→    if (!result) return
+   134→   134→    setSectionBusy('translate')
+   135→   135→    try {
+   136→   136→      const { resume: translated } = await api<{ resume: any }>('/api/desktop/translate-resume', {
+   137→   137→        method: 'POST', body: { resume: result.resume, targetLang },
+   138→   138→      })
+   139→   139→      setResult({ ...result, resume: translated })
+   140→   140→      toast({ title: 'Resume translated', description: `Translated to ${targetLang === 'ar' ? 'Arabic' : 'English'}.` })
+   141→   141→    } catch (e) {
+   142→   142→      toast({ title: 'Translation failed', description: (e as Error).message, variant: 'destructive' })
+   143→   143→    }
+   144→   144→    setSectionBusy(null)
+   145→   145→  }
+   146→   146→
+   147→   147→  const copyToClipboard = (text: string) => {
+   148→   148→    navigator.clipboard.writeText(text)
+   149→   149→    toast({ title: 'Copied', description: 'Content copied to clipboard.' })
+   150→   150→  }
+   151→   151→
+   152→   152→  const exportJSON = () => {
+   153→   153→    if (!result) return
+   154→   154→    const blob = new Blob([JSON.stringify(result.resume, null, 2)], { type: 'application/json' })
+   155→   155→    const url = URL.createObjectURL(blob)
+   156→   156→    const a = document.createElement('a')
+   157→   157→    a.href = url; a.download = 'resume.json'; a.click()
+   158→   158→    URL.revokeObjectURL(url)
+   159→   159→  }
+   160→   160→
+   161→   161→  const exportMarkdown = () => {
+   162→   162→    if (!result) return
+   163→   163→    const r = result.resume
+   164→   164→    let md = `# ${r.contact?.name || 'Resume'}\n\n`
+   165→   165→    if (r.contact?.email) md += `📧 ${r.contact.email} | `
+   166→   166→    if (r.contact?.phone) md += `📱 ${r.contact.phone} | `
+   167→   167→    if (r.contact?.location) md += `📍 ${r.contact.location}\n\n`
+   168→   168→    if (r.objective) md += `## Objective\n${r.objective}\n\n`
+   169→   169→    if (r.experience?.length) {
+   170→   170→      md += `## Experience\n`
+   171→   171→      r.experience.forEach((e: any) => {
+   172→   172→        md += `### ${e.title || ''} — ${e.company || ''}\n${e.startDate || ''} - ${e.endDate || ''}\n`
+   173→   173→        e.bullets?.forEach((b: string) => { md += `- ${b}\n` })
+   174→   174→        md += '\n'
+   175→   175→      })
+   176→   176→    }
+   177→   177→    if (r.education?.length) {
+   178→   178→      md += `## Education\n`
+   179→   179→      r.education.forEach((e: any) => { md += `### ${e.degree || ''} — ${e.school || ''}\n${e.startDate || ''} - ${e.endDate || ''}\n\n` })
+   180→   180→    }
+   181→   181→    if (r.skills?.technical?.length) md += `## Technical Skills\n${r.skills.technical.join(', ')}\n\n`
+   182→   182→    if (r.skills?.soft?.length) md += `## Soft Skills\n${r.skills.soft.join(', ')}\n\n`
+   183→   183→    if (r.skills?.languages?.length) md += `## Languages\n${r.skills.languages.map((l: any) => `${l.language}: ${l.level}`).join(', ')}\n\n`
+   184→   184→    if (r.courses?.length) {
+   185→   185→      md += `## Courses\n`
+   186→   186→      r.courses.forEach((c: any) => { md += `- ${c.name} (${c.provider || ''}, ${c.hours || ''}, ${c.date || ''})\n` })
+   187→   187→    }
+   188→   188→
+   189→   189→    const blob = new Blob([md], { type: 'text/markdown' })
+   190→   190→    const url = URL.createObjectURL(blob)
+   191→   191→    const a = document.createElement('a')
+   192→   192→    a.href = url; a.download = 'resume.md'; a.click()
+   193→   193→    URL.revokeObjectURL(url)
+   194→   194→  }
+   195→   195→
+   196→   196→  const scoreColor = (score: number) => score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444'
+   197→   197→
+   198→   198→  return (
+   199→   199→    <div>
+   200→   200→      <ModuleHeader title={t('studioTitle')} subtitle={t('studioSub')} icon={Sparkles}
+   201→   201→        actions={result && (
+   202→   202→          <div className="flex gap-2">
+   203→   203→            <Button variant="outline" size="sm" className="rounded-full" onClick={exportJSON}><Download className="h-3.5 w-3.5" /> JSON</Button>
+   204→   204→            <Button variant="outline" size="sm" className="rounded-full" onClick={exportMarkdown}><FileType className="h-3.5 w-3.5" /> MD</Button>
+   205→   205→            <Button variant="outline" size="sm" className="rounded-full" onClick={() => window.print()}><FileText className="h-3.5 w-3.5" /> PDF</Button>
+   206→   206→          </div>
+   207→   207→        )}
+   208→   208→      />
+   209→   209→
+   210→   210→      {/* Input section — shows when no result or during generation */}
+   211→   211→      <AnimatePresence mode="wait">
+   212→   212→        {stage === 'idle' && !result && (
+   213→   213→          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+   214→   214→            <Card className="mb-4">
+   215→   215→              <CardContent className="p-6">
+   216→   216→                <div className="flex items-center gap-2 mb-3">
+   217→   217→                  <Brain className="h-5 w-5 text-brand" />
+   218→   218→                  <h3 className="font-semibold">Paste anything — we'll build a professional resume</h3>
+   219→   219→                </div>
+   220→   220→                <Textarea
+   221→   221→                  value={rawText}
+   222→   222→                  onChange={(e) => setRawText(e.target.value)}
+   223→   223→                  rows={10}
+   224→   224→                  placeholder="Paste your raw text here: WhatsApp export, OCR scan, LinkedIn copy, notes, old resume, mixed Arabic+English…"
+   225→   225→                  className="mb-3"
+   226→   226→                />
+   227→   227→                <div className="flex flex-wrap items-center gap-2 mb-3">
+   228→   228→                  <Badge variant="secondary" className="text-[10px]">📄 OCR text</Badge>
+   229→   229→                  <Badge variant="secondary" className="text-[10px]">💬 WhatsApp export</Badge>
+   230→   230→                  <Badge variant="secondary" className="text-[10px]">🌐 Bilingual AR/EN</Badge>
+   231→   231→                  <Badge variant="secondary" className="text-[10px]">📋 LinkedIn copy</Badge>
+   232→   232→                  <Badge variant="secondary" className="text-[10px]">📝 Random notes</Badge>
+   233→   233→                  <Badge variant="secondary" className="text-[10px]">🔧 Broken formatting</Badge>
+   234→   234→                </div>
+   235→   235→
+   236→   236→                {showJD && (
+   237→   237→                  <div className="mb-3">
+   238→   238→                    <Label className="text-xs text-muted-foreground">Job description (optional — enables ATS optimization)</Label>
+   239→   239→                    <Textarea value={jobDescription} onChange={(e) => setJobDescription(e.target.value)} rows={4} className="mt-1" placeholder="Paste the job description for ATS keyword matching…" />
+   240→   240→                  </div>
+   241→   241→                )}
+   242→   242→                {!showJD && (
+   243→   243→                  <Button variant="ghost" size="sm" className="text-xs mb-3" onClick={() => setShowJD(true)}>
+   244→   244→                    <Target className="h-3 w-3" /> Add job description for ATS optimization
+   245→   245→                  </Button>
+   246→   246→                )}
+   247→   247→
+   248→   248→                <Button onClick={generate} disabled={!rawText.trim()} className="w-full bg-brand text-brand-foreground hover:bg-brand/90 rounded-full h-12 text-base">
+   249→   249→                  <Wand2 className="h-5 w-5" /> Generate Professional Resume
+   250→   250→                </Button>
+   251→   251→              </CardContent>
+   252→   252→            </Card>
+   253→   253→          </motion.div>
+   254→   254→        )}
+   255→   255→
+   256→   256→        {/* Pipeline progress */}
+   257→   257→        {stage !== 'idle' && stage !== 'done' && (
+   258→   258→          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+   259→   259→            <Card>
+   260→   260→              <CardContent className="p-8">
+   261→   261→                <div className="space-y-4">
+   262→   262→                  {STAGES.filter(s => s.id !== 'done').map((s, i) => {
+   263→   263→                    const isActive = stage === s.id
+   264→   264→                    const isPast = STAGES.findIndex(x => x.id === stage) > i
+   265→   265→                    const Icon = s.icon
+   266→   266→                    return (
+   267→   267→                      <motion.div key={s.id} className="flex items-center gap-3"
+   268→   268→                        animate={{ opacity: isActive ? 1 : isPast ? 0.5 : 0.3 }}>
+   269→   269→                        <div className={`h-10 w-10 rounded-full flex items-center justify-center ${isActive ? 'bg-brand text-brand-foreground' : isPast ? 'bg-brand/20 text-brand' : 'bg-muted text-muted-foreground'}`}>
+   270→   270→                          {isActive ? <Spinner /> : isPast ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+   271→   271→                        </div>
+   272→   272→                        <div>
+   273→   273→                          <div className="text-sm font-medium">{s.label}</div>
+   274→   274→                          {isActive && <div className="text-xs text-brand">Processing…</div>}
+   275→   275→                        </div>
+   276→   276→                      </motion.div>
+   277→   277→                    )
+   278→   278→                  })}
+   279→   279→                </div>
+   280→   280→              </CardContent>
+   281→   281→            </Card>
+   282→   282→          </motion.div>
+   283→   283→        )}
+   284→   284→
+   285→   285→        {/* Results */}
+   286→   286→        {result && stage === 'done' && (
+   287→   287→          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+   288→   288→            <Tabs value={activeTab} onValueChange={setActiveTab}>
+   289→   289→              <TabsList className="grid w-full max-w-lg grid-cols-4 mb-4">
+   290→   290→                <TabsTrigger value="preview">Preview</TabsTrigger>
+   291→   291→                <TabsTrigger value="score">Score</TabsTrigger>
+   292→   292→                <TabsTrigger value="keywords">Keywords</TabsTrigger>
+   293→   293→                <TabsTrigger value="missing">Missing Info</TabsTrigger>
+   294→   294→              </TabsList>
+   295→   295→
+   296→   296→              {/* ─── Preview Tab ─── */}
+   297→   297→              <TabsContent value="preview" className="space-y-4">
+   298→   298→                <div className="flex flex-wrap gap-2 mb-2">
+   299→   299→                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => translateResume('ar')} disabled={sectionBusy === 'translate'}>
+   300→   300→                    {sectionBusy === 'translate' ? <Spinner /> : <Languages className="h-3.5 w-3.5" />} Translate to Arabic
+   301→   301→                  </Button>
+   302→   302→                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => translateResume('en')} disabled={sectionBusy === 'translate'}>
+   303→   303→                    <Languages className="h-3.5 w-3.5" /> Translate to English
+   304→   304→                  </Button>
+   305→   305→                  <Button variant="outline" size="sm" className="rounded-full" onClick={() => { setResult(null); setStage('idle'); setRawText('') }}>
+   306→   306→                    <RefreshCw className="h-3.5 w-3.5" /> New Resume
+   307→   307→                  </Button>
+   308→   308→                </div>
+   309→   309→
+   310→   310→                {/* Resume Preview Card */}
+   311→   311→                <Card className="overflow-hidden">
+   312→   312→                  <CardContent className="p-0">
+   313→   313→                    <div className="bg-white text-neutral-900 p-6 sm:p-8 text-sm" style={{ fontFamily: 'var(--font-geist-sans)' }}>
+   314→   314→                      {/* Header */}
+   315→   315→                      <header className="border-b-2 pb-3 mb-4" style={{ borderColor: '#10b981' }}>
+   316→   316→                        <h1 className="text-2xl font-bold">{result.resume.contact?.name || 'Your Name'}</h1>
+   317→   317→                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-neutral-600 mt-1">
+   318→   318→                          {result.resume.contact?.email && <span>{result.resume.contact.email}</span>}
+   319→   319→                          {result.resume.contact?.phone && <span>· {result.resume.contact.phone}</span>}
+   320→   320→                          {result.resume.contact?.location && <span>· {result.resume.contact.location}</span>}
+   321→   321→                          {result.resume.contact?.linkedin && <span>· {result.resume.contact.linkedin}</span>}
+   322→   322→                        </div>
+   323→   323→                      </header>
+   324→   324→
+   325→   325→                      {/* Objective */}
+   326→   326→                      {result.resume.objective && (
+   327→   327→                        <SectionCard title="Objective" onRewrite={() => rewriteSection('objective', result.resume.objective)} busy={sectionBusy === 'objective'} onCopy={() => copyToClipboard(result.resume.objective)}>
+   328→   328→                          <p className="text-neutral-700">{result.resume.objective}</p>
+   329→   329→                        </SectionCard>
+   330→   330→                      )}
+   331→   331→
+   332→   332→                      {/* Experience */}
+   333→   333→                      {result.resume.experience?.length > 0 && (
+   334→   334→                        <SectionCard title="Experience" onRewrite={() => rewriteSection('experience', result.resume.experience)} busy={sectionBusy === 'experience'} onCopy={() => copyToClipboard(JSON.stringify(result.resume.experience))}>
+   335→   335→                          <div className="space-y-3">
+   336→   336→                            {result.resume.experience.map((exp: any, i: number) => (
+   337→   337→                              <div key={i}>
+   338→   338→                                <div className="flex items-baseline justify-between">
+   339→   339→                                  <span className="font-semibold">{exp.title || 'Role'}</span>
+   340→   340→                                  <span className="text-xs text-neutral-500">{exp.startDate} – {exp.endDate}</span>
+   341→   341→                                </div>
+   342→   342→                                {exp.company && <div className="text-neutral-600 text-xs">{exp.company}</div>}
+   343→   343→                                <ul className="list-disc ps-4 mt-1 space-y-0.5 text-neutral-700">
+   344→   344→                                  {exp.bullets?.map((b: string, j: number) => <li key={j}>{b}</li>)}
+   345→   345→                                </ul>
+   346→   346→                              </div>
+   347→   347→                            ))}
+   348→   348→                          </div>
+   349→   349→                        </SectionCard>
+   350→   350→                      )}
+   351→   351→
+   352→   352→                      {/* Education */}
+   353→   353→                      {result.resume.education?.length > 0 && (
+   354→   354→                        <SectionCard title="Education" onRewrite={() => rewriteSection('education', result.resume.education)} busy={sectionBusy === 'education'} onCopy={() => copyToClipboard(JSON.stringify(result.resume.education))}>
+   355→   355→                          {result.resume.education.map((ed: any, i: number) => (
+   356→   356→                            <div key={i} className="mb-1.5">
+   357→   357→                              <span className="font-semibold">{ed.degree || 'Degree'}</span>
+   358→   358→                              <span className="text-neutral-600"> · {ed.school || 'School'}</span>
+   359→   359→                              <div className="text-xs text-neutral-500">{ed.startDate} – {ed.endDate}</div>
+   360→   360→                            </div>
+   361→   361→                          ))}
+   362→   362→                        </SectionCard>
+   363→   363→                      )}
+   364→   364→
+   365→   365→                      {/* Skills */}
+   366→   366→                      {result.resume.skills && (
+   367→   367→                        <SectionCard title="Skills" onRewrite={() => rewriteSection('skills', result.resume.skills)} busy={sectionBusy === 'skills'} onCopy={() => copyToClipboard(JSON.stringify(result.resume.skills))}>
+   368→   368→                          {result.resume.skills.technical?.length > 0 && (
+   369→   369→                            <div className="mb-2">
+   370→   370→                              <span className="text-xs font-bold uppercase text-neutral-500">Technical: </span>
+   371→   371→                              <span className="text-neutral-700">{result.resume.skills.technical.join(', ')}</span>
+   372→   372→                            </div>
+   373→   373→                          )}
+   374→   374→                          {result.resume.skills.soft?.length > 0 && (
+   375→   375→                            <div className="mb-2">
+   376→   376→                              <span className="text-xs font-bold uppercase text-neutral-500">Soft: </span>
+   377→   377→                              <span className="text-neutral-700">{result.resume.skills.soft.join(', ')}</span>
+   378→   378→                            </div>
+   379→   379→                          )}
+   380→   380→                          {result.resume.skills.languages?.length > 0 && (
+   381→   381→                            <div>
+   382→   382→                              <span className="text-xs font-bold uppercase text-neutral-500">Languages: </span>
+   383→   383→                              <span className="text-neutral-700">{result.resume.skills.languages.map((l: any) => `${l.language} (${l.level})`).join(', ')}</span>
+   384→   384→                            </div>
+   385→   385→                          )}
+   386→   386→                        </SectionCard>
+   387→   387→                      )}
+   388→   388→
+   389→   389→                      {/* Courses */}
+   390→   390→                      {result.resume.courses?.length > 0 && (
+   391→   391→                        <div className="mb-4">
+   392→   392→                          <h3 className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: '#10b981' }}>Courses</h3>
+   393→   393→                          <div className="space-y-0.5">
+   394→   394→                            {result.resume.courses.map((c: any, i: number) => (
+   395→   395→                              <div key={i} className="text-neutral-700 text-xs">{c.name} — {c.provider} {c.hours && `(${c.hours})`} {c.date && `· ${c.date}`}</div>
+   396→   396→                            ))}
+   397→   397→                          </div>
+   398→   398→                        </div>
+   399→   399→                      )}
+   400→   400→                    </div>
+   401→   401→                  </CardContent>
+   402→   402→                </Card>
+   403→   403→
+   404→   404→                {/* Enrichment Notes */}
+   405→   405→                {result.enrichmentNotes?.length > 0 && (
+   406→   406→                  <Card>
+   407→   407→                    <CardContent className="p-4">
+   408→   408→                      <div className="flex items-center gap-2 mb-2"><Sparkles className="h-4 w-4 text-brand" /><span className="text-sm font-semibold">AI Enrichment Applied</span></div>
+   409→   409→                      {result.enrichmentNotes.map((n, i) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5"><CheckCircle2 className="h-3 w-3 text-brand mt-0.5" />{n}</div>)}
+   410→   410→                    </CardContent>
+   411→   411→                  </Card>
+   412→   412→                )}
+   413→   413→              </TabsContent>
+   414→   414→
+   415→   415→              {/* ─── Score Tab ─── */}
+   416→   416→              <TabsContent value="score" className="space-y-4">
+   417→   417→                {(() => {
+   418→   418→                  // Normalize: V4 returns evaluation.metrics, V3 returns score.dimensions
+   419→   419→                  const overall = result.evaluation?.overall ?? result.score?.overall ?? 0
+   420→   420→                  const metrics = result.evaluation?.metrics ?? []
+   421→   421→                  const getMetric = (name: string) => metrics.find(m => m.name === name)?.score ?? 0
+   422→   422→                  const atsScore = result.score?.atsScore ?? getMetric('ATS Keyword Coverage')
+   423→   423→                  const completeness = result.score?.completeness ?? getMetric('Section Completeness')
+   424→   424→                  const keywordScore = result.score?.keywordScore ?? getMetric('ATS Keyword Coverage')
+   425→   425→                  const formattingScore = result.score?.formattingScore ?? getMetric('Formatting')
+   426→   426→                  const dimensions = result.score?.dimensions ?? metrics.map(m => ({ name: m.name, score: m.score, status: m.passed ? 'good' : 'bad' }))
+   427→   427→                  const quickWins = result.score?.quickWins ?? result.evaluation?.recommendations ?? []
+   428→   428→                  const missingCritical = result.score?.missingCritical ?? result.evaluation?.missingFields ?? []
+   429→   429→
+   430→   430→                  return (
+   431→   431→                    <>
+   432→   432→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   433→   433→                  <ScoreCard label="Overall" value={overall} color={scoreColor(overall)} icon={Award} />
+   434→   434→                  <ScoreCard label="ATS Score" value={atsScore} color={scoreColor(atsScore)} icon={Target} />
+   435→   435→                  <ScoreCard label="Completeness" value={completeness} color={scoreColor(completeness)} icon={CheckCircle2} />
+   436→   436→                  <ScoreCard label="Keywords" value={keywordScore} color={scoreColor(keywordScore)} icon={Zap} />
+   437→   437→                  <ScoreCard label="Formatting" value={formattingScore} color={scoreColor(formattingScore)} icon={FileText} />
+   438→   438→                </div>
+   439→   439→
+   440→   440→                {/* Dimensions */}
+   441→   441→                <Card>
+   442→   442→                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Detailed Breakdown</CardTitle></CardHeader>
+   443→   443→                  <CardContent className="space-y-3">
+   444→   444→                    {dimensions?.map((d: any, i: number) => (
+   445→   445→                      <div key={i}>
+   446→   446→                        <div className="flex justify-between text-xs mb-1">
+   447→   447→                          <span className="capitalize">{d.name}</span>
+   448→   448→                          <span className="font-medium" style={{ color: scoreColor(d.score) }}>{d.score}/100</span>
+   449→   449→                        </div>
+   450→   450→                        <Progress value={d.score} className="h-1.5" />
+   451→   451→                      </div>
+   452→   452→                    ))}
+   453→   453→                  </CardContent>
+   454→   454→                </Card>
+   455→   455→
+   456→   456→                {/* Quick Wins */}
+   457→   457→                {quickWins?.length > 0 && (
+   458→   458→                  <Card>
+   459→   459→                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Zap className="h-4 w-4 text-brand" /> Quick Wins {'(< 5 min)'}</CardTitle></CardHeader>
+   460→   460→                    <CardContent>
+   461→   461→                      {quickWins.map((w: string, i: number) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-brand">→</span>{w}</div>)}
+   462→   462→                    </CardContent>
+   463→   463→                  </Card>
+   464→   464→                )}
+   465→   465→
+   466→   466→                {/* Missing Critical */}
+   467→   467→                {missingCritical?.length > 0 && (
+   468→   468→                  <Card className="border-destructive/30">
+   469→   469→                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2 text-destructive"><AlertCircle className="h-4 w-4" /> Critical Missing Elements</CardTitle></CardHeader>
+   470→   470→                    <CardContent>
+   471→   471→                      {missingCritical.map((m: string, i: number) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-destructive">!</span>{m}</div>)}
+   472→   472→                    </CardContent>
+   473→   473→                  </Card>
+   474→   474→                )}
+   475→   475→                    </>
+   476→   476→                  )
+   477→   477→                })()}
+   478→   478→              </TabsContent>
+   479→   479→
+   480→   480→              {/* ─── Keywords Tab ─── */}
+   481→   481→              <TabsContent value="keywords" className="space-y-4">
+   482→   482→                <Card>
+   483→   483→                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Detected Keywords</CardTitle></CardHeader>
+   484→   484→                  <CardContent>
+   485→   485→                    <div className="flex flex-wrap gap-1.5">
+   486→   486→                      {result.keywords?.detected?.map((k, i) => <Badge key={i} className="bg-brand/15 text-brand border-brand/30">{k}</Badge>)}
+   487→   487→                    </div>
+   488→   488→                  </CardContent>
+   489→   489→                </Card>
+   490→   490→                <Card>
+   491→   491→                  <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Suggested Keywords</CardTitle></CardHeader>
+   492→   492→                  <CardContent>
+   493→   493→                    <div className="flex flex-wrap gap-1.5">
+   494→   494→                      {result.keywords?.suggested?.map((k, i) => <Badge key={i} variant="outline" className="border-amber-500/40 text-amber-600">{k}</Badge>)}
+   495→   495→                    </div>
+   496→   496→                  </CardContent>
+   497→   497→                </Card>
+   498→   498→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   499→   499→                  <Card>
+   500→   500→                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Action Verbs Used</CardTitle></CardHeader>
+   501→   501→                    <CardContent>
+   502→   502→                      <div className="flex flex-wrap gap-1.5">
+   503→   503→                        {result.keywords?.actionVerbs?.map((k, i) => <Badge key={i} variant="secondary">{k}</Badge>)}
+   504→   504→                      </div>
+   505→   505→                    </CardContent>
+   506→   506→                  </Card>
+   507→   507→                  <Card>
+   508→   508→                    <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Missing Action Verbs</CardTitle></CardHeader>
+   509→   509→                    <CardContent>
+   510→   510→                      <div className="flex flex-wrap gap-1.5">
+   511→   511→                        {result.keywords?.missingActionVerbs?.map((k, i) => <Badge key={i} variant="outline" className="text-muted-foreground">{k}</Badge>)}
+   512→   512→                      </div>
+   513→   513→                    </CardContent>
+   514→   514→                  </Card>
+   515→   515→                </div>
+   516→   516→              </TabsContent>
+   517→   517→
+   518→   518→              {/* ─── Missing Info Tab ─── */}
+   519→   519→              <TabsContent value="missing" className="space-y-4">
+   520→   520→                <Card>
+   521→   521→                  <CardContent className="p-4">
+   522→   522→                    <div className="flex items-center gap-2 mb-3"><AlertCircle className="h-4 w-4 text-amber-500" /><span className="text-sm font-semibold">Information You Should Add</span></div>
+   523→   523→                    <div className="space-y-3">
+   524→   524→                      {result.missingInfo?.map((m, i) => (
+   525→   525→                        <div key={i} className="rounded-lg border p-3">
+   526→   526→                          <div className="flex items-center gap-2 mb-1">
+   527→   527→                            <Badge className={m.priority === 'high' ? 'bg-destructive/15 text-destructive border-destructive/30' : m.priority === 'medium' ? 'bg-amber-500/15 text-amber-600 border-amber-500/30' : 'bg-brand/15 text-brand border-brand/30'} variant="outline">{m.priority}</Badge>
+   528→   528→                            <span className="text-sm font-medium">{m.field}</span>
+   529→   529→                          </div>
+   530→   530→                          <p className="text-xs text-muted-foreground">{m.question}</p>
+   531→   531→                          {m.suggestion && <p className="text-xs text-brand mt-1">💡 {m.suggestion}</p>}
+   532→   532→                        </div>
+   533→   533→                      ))}
+   534→   534→                    </div>
+   535→   535→                  </CardContent>
+   536→   536→                </Card>
+   537→   537→              </TabsContent>
+   538→   538→            </Tabs>
+   539→   539→          </motion.div>
+   540→   540→        )}
+   541→   541→      </AnimatePresence>
+   542→   542→    </div>
+   543→   543→  )
+   544→   544→}
+   545→   545→
+   546→   546→// ─── Helper Components ─────────────────────────────────────────────
+   547→   547→
+   548→   548→function ScoreCard({ label, value, color, icon: Icon }: { label: string; value: number; color: string; icon: any }) {
+   549→   549→  return (
+   550→   550→    <Card>
+   551→   551→      <CardContent className="p-4">
+   552→   552→        <div className="flex items-center justify-between mb-2">
+   553→   553→          <span className="text-xs text-muted-foreground">{label}</span>
+   554→   554→          <Icon className="h-4 w-4" style={{ color }} />
+   555→   555→        </div>
+   556→   556→        <div className="text-3xl font-bold" style={{ color }}>{value}</div>
+   557→   557→        <Progress value={value} className="h-1.5 mt-2" />
+   558→   558→        <div className="text-[10px] text-muted-foreground mt-1">/ 100</div>
+   559→   559→      </CardContent>
+   560→   560→    </Card>
+   561→   561→  )
+   562→   562→}
+   563→   563→
+   564→   564→function SectionCard({ title, children, onRewrite, busy, onCopy }: { title: string; children: React.ReactNode; onRewrite: () => void; busy: boolean; onCopy: () => void }) {
+   565→   565→  return (
+   566→   566→    <div className="mb-4 group">
+   567→   567→      <div className="flex items-center justify-between mb-1.5">
+   568→   568→        <h3 className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#10b981' }}>{title}</h3>
+   569→   569→        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+   570→   570→          <button onClick={onCopy} className="text-neutral-400 hover:text-neutral-700 p-1" aria-label="Copy"><Copy className="h-3 w-3" /></button>
+   571→   571→          <button onClick={onRewrite} disabled={busy} className="text-neutral-400 hover:text-neutral-700 p-1" aria-label="AI Rewrite">
+   572→   572→            {busy ? <Spinner /> : <Wand2 className="h-3 w-3" />}
+   573→   573→          </button>
+   574→   574→        </div>
+   575→   575→      </div>
+   576→   576→      {children}
+   577→   577→    </div>
+   578→   578→  )
+   579→   579→}
+   580→   580→

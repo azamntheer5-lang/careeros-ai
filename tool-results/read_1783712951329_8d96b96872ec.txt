@@ -1,0 +1,1076 @@
+     1→'use client'
+     2→
+     3→import { useEffect, useState } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import { api } from '@/lib/api-client'
+     6→import { useApp } from '@/components/app-provider'
+     7→import { useToast } from '@/hooks/use-toast'
+     8→import { useProfile } from '@/components/careeros/profile-context'
+     9→import { ModuleHeader } from '@/components/careeros/module-header'
+    10→import { Spinner } from '@/components/careeros/loading'
+    11→import { Card, CardContent } from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Label } from '@/components/ui/label'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    18→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from '@/components/ui/select'
+    26→import {
+    27→  Dialog,
+    28→  DialogContent,
+    29→  DialogHeader,
+    30→  DialogTitle,
+    31→  DialogDescription,
+    32→  DialogFooter,
+    33→} from '@/components/ui/dialog'
+    34→import { ScrollArea } from '@/components/ui/scroll-area'
+    35→import {
+    36→  GraduationCap,
+    37→  Star,
+    38→  Clock,
+    39→  Shield,
+    40→  Plus,
+    41→  X,
+    42→  Calendar,
+    43→  Video,
+    44→  FileText,
+    45→  Mic,
+    46→  CheckCircle2,
+    47→  Sparkles,
+    48→  MessageSquare,
+    49→  ArrowRight,
+    50→} from 'lucide-react'
+    51→
+    52→// ---------------------------------------------------------------------------
+    53→// Types
+    54→// ---------------------------------------------------------------------------
+    55→type Mentor = {
+    56→  id: string
+    57→  userId: string
+    58→  slug: string
+    59→  title: string
+    60→  expertise: string[]
+    61→  industries: string[]
+    62→  experience: number | null
+    63→  rate: number
+    64→  currency: string
+    65→  rating: number
+    66→  sessions: number
+    67→  bio: string | null
+    68→  availability: { day: string; slots: string[] }[]
+    69→  verified: boolean
+    70→  rateDisplay?: string
+    71→  user?: { id: string; name: string | null; headline: string | null }
+    72→}
+    73→
+    74→type Booking = {
+    75→  id: string
+    76→  userId: string
+    77→  mentorId: string
+    78→  type: string
+    79→  topic: string | null
+    80→  scheduledAt: string
+    81→  duration: number
+    82→  status: string
+    83→  price: number
+    84→  feedback: { rating?: number; comment?: string } | null
+    85→  mentor?: Mentor
+    86→  user?: { id: string; name: string | null }
+    87→}
+    88→
+    89→const BOOKING_TYPES = [
+    90→  { value: 'session', label: '1:1 Session', icon: MessageSquare, desc: 'General career guidance' },
+    91→  { value: 'resume_review', label: 'Resume Review', icon: FileText, desc: 'Deep resume + ATS feedback' },
+    92→  { value: 'mock_interview', label: 'Mock Interview', icon: Mic, desc: 'Practice + live feedback' },
+    93→] as const
+    94→
+    95→const STATUS_STYLE: Record<string, string> = {
+    96→  pending: 'border-amber-500/40 text-amber-600 bg-amber-500/10',
+    97→  confirmed: 'border-brand/40 text-brand bg-brand/10',
+    98→  completed: 'border-emerald-500/40 text-emerald-600 bg-emerald-500/10',
+    99→  cancelled: 'border-destructive/40 text-destructive bg-destructive/10',
+   100→}
+   101→
+   102→// ---------------------------------------------------------------------------
+   103→// Main module
+   104→// ---------------------------------------------------------------------------
+   105→export function MentorsModule() {
+   106→  const { t } = useApp()
+   107→  const [mentors, setMentors] = useState<Mentor[]>([])
+   108→  const [ownMentor, setOwnMentor] = useState<Mentor | null>(null)
+   109→  const [myBookings, setMyBookings] = useState<Booking[]>([])
+   110→  const [loading, setLoading] = useState(true)
+   111→  const [tab, setTab] = useState('browse')
+   112→  const [bookingMentor, setBookingMentor] = useState<Mentor | null>(null)
+   113→
+   114→  useEffect(() => {
+   115→    api<{ mentors: Mentor[]; ownMentor: Mentor | null; myBookings: Booking[] }>('/api/mentors')
+   116→      .then((res) => {
+   117→        setMentors(res.mentors)
+   118→        setOwnMentor(res.ownMentor)
+   119→        setMyBookings(res.myBookings)
+   120→      })
+   121→      .finally(() => setLoading(false))
+   122→  }, [])
+   123→
+   124→  const reload = async () => {
+   125→    const res = await api<{ mentors: Mentor[]; ownMentor: Mentor | null; myBookings: Booking[] }>('/api/mentors')
+   126→    setMentors(res.mentors)
+   127→    setOwnMentor(res.ownMentor)
+   128→    setMyBookings(res.myBookings)
+   129→  }
+   130→
+   131→  return (
+   132→    <div>
+   133→      <ModuleHeader title={t('mentorsTitle')} subtitle={t('mentorsSub')} icon={GraduationCap} />
+   134→
+   135→      {loading ? (
+   136→        <div className="flex justify-center py-16">
+   137→          <Spinner className="h-6 w-6 text-brand" />
+   138→        </div>
+   139→      ) : (
+   140→        <Tabs value={tab} onValueChange={setTab} className="w-full">
+   141→          <TabsList className="grid w-full max-w-md grid-cols-3 mb-4">
+   142→            <TabsTrigger value="browse">Browse Mentors</TabsTrigger>
+   143→            <TabsTrigger value="bookings">
+   144→              My Bookings
+   145→              {myBookings.length > 0 && (
+   146→                <span className="ms-1.5 rounded-full bg-brand-soft text-brand text-[10px] px-1.5 leading-4">
+   147→                  {myBookings.length}
+   148→                </span>
+   149→              )}
+   150→            </TabsTrigger>
+   151→            <TabsTrigger value="mentor">Become a Mentor</TabsTrigger>
+   152→          </TabsList>
+   153→
+   154→          <TabsContent value="browse">
+   155→            <BrowseMentors
+   156→              mentors={mentors}
+   157→              onBook={(m) => setBookingMentor(m)}
+   158→              onBecomeMentor={() => setTab('mentor')}
+   159→            />
+   160→          </TabsContent>
+   161→
+   162→          <TabsContent value="bookings">
+   163→            <MyBookings bookings={myBookings} onBrowse={() => setTab('browse')} />
+   164→          </TabsContent>
+   165→
+   166→          <TabsContent value="mentor">
+   167→            <BecomeMentor mentor={ownMentor} onSaved={reload} />
+   168→          </TabsContent>
+   169→        </Tabs>
+   170→      )}
+   171→
+   172→      {bookingMentor && (
+   173→        <BookingDialog
+   174→          mentor={bookingMentor}
+   175→          onClose={() => setBookingMentor(null)}
+   176→          onBooked={() => {
+   177→            setBookingMentor(null)
+   178→            reload()
+   179→            setTab('bookings')
+   180→          }}
+   181→        />
+   182→      )}
+   183→    </div>
+   184→  )
+   185→}
+   186→
+   187→// ---------------------------------------------------------------------------
+   188→// Browse Mentors tab
+   189→// ---------------------------------------------------------------------------
+   190→function BrowseMentors({
+   191→  mentors,
+   192→  onBook,
+   193→  onBecomeMentor,
+   194→}: {
+   195→  mentors: Mentor[]
+   196→  onBook: (m: Mentor) => void
+   197→  onBecomeMentor: () => void
+   198→}) {
+   199→  const [q, setQ] = useState('')
+   200→  const filtered = mentors.filter((m) => {
+   201→    if (!q) return true
+   202→    const hay = `${m.title} ${m.user?.name || ''} ${m.expertise.join(' ')} ${m.industries.join(' ')}`.toLowerCase()
+   203→    return hay.includes(q.toLowerCase())
+   204→  })
+   205→
+   206→  return (
+   207→    <div>
+   208→      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+   209→        <div className="relative flex-1 max-w-sm">
+   210→          <Input
+   211→            value={q}
+   212→            onChange={(e) => setQ(e.target.value)}
+   213→            placeholder="Search mentors, expertise, industries…"
+   214→            className="ps-9 h-9 rounded-full bg-card"
+   215→          />
+   216→          <Sparkles className="absolute start-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+   217→        </div>
+   218→        <Button
+   219→          variant="outline"
+   220→          size="sm"
+   221→          className="rounded-full"
+   222→          onClick={onBecomeMentor}
+   223→        >
+   224→          <GraduationCap className="h-4 w-4" /> Become a mentor
+   225→        </Button>
+   226→      </div>
+   227→
+   228→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   229→        {filtered.map((m, i) => (
+   230→          <MentorCard key={m.id} mentor={m} index={i} onBook={() => onBook(m)} />
+   231→        ))}
+   232→      </div>
+   233→
+   234→      {filtered.length === 0 && (
+   235→        <Card>
+   236→          <CardContent className="p-12 text-center text-muted-foreground">
+   237→            <GraduationCap className="h-10 w-10 mx-auto mb-3 opacity-40" />
+   238→            <p>No mentors match your search.</p>
+   239→          </CardContent>
+   240→        </Card>
+   241→      )}
+   242→    </div>
+   243→  )
+   244→}
+   245→
+   246→function MentorCard({
+   247→  mentor,
+   248→  index,
+   249→  onBook,
+   250→}: {
+   251→  mentor: Mentor
+   252→  index: number
+   253→  onBook: () => void
+   254→}) {
+   255→  const name = mentor.user?.name || 'Mentor'
+   256→  const initials = name
+   257→    .split(' ')
+   258→    .map((p) => p[0])
+   259→    .filter(Boolean)
+   260→    .slice(0, 2)
+   261→    .join('')
+   262→    .toUpperCase()
+   263→
+   264→  return (
+   265→    <motion.div
+   266→      initial={{ opacity: 0, y: 10 }}
+   267→      animate={{ opacity: 1, y: 0 }}
+   268→      transition={{ delay: Math.min(index * 0.04, 0.4) }}
+   269→    >
+   270→      <Card className="h-full hover:shadow-md hover:border-brand/40 transition-all group">
+   271→        <CardContent className="p-5 flex flex-col h-full">
+   272→          <div className="flex items-start gap-3 mb-3">
+   273→            <Avatar className="h-12 w-12 ring-2 ring-brand/20">
+   274→              <AvatarFallback className="bg-brand-soft text-brand font-semibold text-sm">
+   275→                {initials}
+   276→              </AvatarFallback>
+   277→            </Avatar>
+   278→            <div className="flex-1 min-w-0">
+   279→              <div className="flex items-center gap-1.5">
+   280→                <h3 className="font-semibold truncate">{name}</h3>
+   281→                {mentor.verified && (
+   282→                  <Shield
+   283→                    className="h-3.5 w-3.5 text-brand shrink-0"
+   284→                    aria-label="Verified"
+   285→                  />
+   286→                )}
+   287→              </div>
+   288→              <p className="text-xs text-muted-foreground truncate">{mentor.title}</p>
+   289→            </div>
+   290→            <div className="flex items-center gap-1 shrink-0">
+   291→              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+   292→              <span className="text-xs font-semibold text-amber-600">
+   293→                {mentor.rating.toFixed(1)}
+   294→              </span>
+   295→            </div>
+   296→          </div>
+   297→
+   298→          {mentor.bio && (
+   299→            <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3 mb-3">
+   300→              {mentor.bio}
+   301→            </p>
+   302→          )}
+   303→
+   304→          <div className="flex flex-wrap gap-1 mb-3">
+   305→            {mentor.expertise.slice(0, 4).map((e) => (
+   306→              <Badge
+   307→                key={e}
+   308→                variant="outline"
+   309→                className="text-[10px] bg-brand-soft/40 border-brand/20 text-foreground"
+   310→              >
+   311→                {e}
+   312→              </Badge>
+   313→            ))}
+   314→            {mentor.expertise.length > 4 && (
+   315→              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+   316→                +{mentor.expertise.length - 4}
+   317→              </Badge>
+   318→            )}
+   319→          </div>
+   320→
+   321→          <div className="mt-auto flex items-center justify-between gap-2 pt-2 border-t">
+   322→            <div className="flex flex-col">
+   323→              <div className="flex items-center gap-1">
+   324→                <span className="text-base font-bold text-brand">
+   325→                  {mentor.rateDisplay || `$${(mentor.rate / 100).toFixed(0)}`}
+   326→                </span>
+   327→                <span className="text-[10px] text-muted-foreground">/ session</span>
+   328→              </div>
+   329→              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+   330→                <Clock className="h-2.5 w-2.5" />
+   331→                {mentor.sessions} sessions
+   332→              </div>
+   333→            </div>
+   334→            <Button
+   335→              size="sm"
+   336→              className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90 h-8"
+   337→              onClick={onBook}
+   338→            >
+   339→              Book <ArrowRight className="h-3 w-3 flip-rtl" />
+   340→            </Button>
+   341→          </div>
+   342→        </CardContent>
+   343→      </Card>
+   344→    </motion.div>
+   345→  )
+   346→}
+   347→
+   348→// ---------------------------------------------------------------------------
+   349→// Booking dialog
+   350→// ---------------------------------------------------------------------------
+   351→function BookingDialog({
+   352→  mentor,
+   353→  onClose,
+   354→  onBooked,
+   355→}: {
+   356→  mentor: Mentor
+   357→  onClose: () => void
+   358→  onBooked: () => void
+   359→}) {
+   360→  const { t } = useApp()
+   361→  const { toast } = useToast()
+   362→  const [type, setType] = useState<string>('session')
+   363→  const [topic, setTopic] = useState('')
+   364→  const [scheduledAt, setScheduledAt] = useState('')
+   365→  const [duration, setDuration] = useState('60')
+   366→  const [busy, setBusy] = useState(false)
+   367→
+   368→  // Default datetime = next day 17:00 local.
+   369→  useEffect(() => {
+   370→    const d = new Date()
+   371→    d.setDate(d.getDate() + 1)
+   372→    d.setHours(17, 0, 0, 0)
+   373→    const pad = (n: number) => String(n).padStart(2, '0')
+   374→    setScheduledAt(
+   375→      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+   376→    )
+   377→  }, [])
+   378→
+   379→  const price = Math.round((mentor.rate * Number(duration)) / 60)
+   380→
+   381→  const submit = async () => {
+   382→    if (!scheduledAt) {
+   383→      toast({ title: 'Pick a date & time', variant: 'destructive' })
+   384→      return
+   385→    }
+   386→    setBusy(true)
+   387→    try {
+   388→      await api('/api/bookings', {
+   389→        method: 'POST',
+   390→        body: { mentorId: mentor.id, type, topic, scheduledAt, duration: Number(duration) },
+   391→      })
+   392→      toast({
+   393→        title: t('booked'),
+   394→        description: `Session with ${mentor.user?.name || 'mentor'} requested.`,
+   395→      })
+   396→      onBooked()
+   397→    } catch (e) {
+   398→      toast({ title: 'Booking failed', description: (e as Error).message, variant: 'destructive' })
+   399→    } finally {
+   400→      setBusy(false)
+   401→    }
+   402→  }
+   403→
+   404→  const name = mentor.user?.name || 'Mentor'
+   405→
+   406→  return (
+   407→    <Dialog open onOpenChange={(o) => !o && onClose()}>
+   408→      <DialogContent className="sm:max-w-md">
+   409→        <DialogHeader>
+   410→          <DialogTitle className="flex items-center gap-2">
+   411→            <GraduationCap className="h-5 w-5 text-brand" /> Book {name}
+   412→          </DialogTitle>
+   413→          <DialogDescription>{mentor.title}</DialogDescription>
+   414→        </DialogHeader>
+   415→
+   416→        <div className="space-y-3">
+   417→          <div>
+   418→            <Label className="text-xs text-muted-foreground">Session type</Label>
+   419→            <Select value={type} onValueChange={setType}>
+   420→              <SelectTrigger className="mt-1">
+   421→                <SelectValue />
+   422→              </SelectTrigger>
+   423→              <SelectContent>
+   424→                {BOOKING_TYPES.map((tp) => (
+   425→                  <SelectItem key={tp.value} value={tp.value}>
+   426→                    <span className="flex items-center gap-2">
+   427→                      <tp.icon className="h-3.5 w-3.5" />
+   428→                      {tp.label}
+   429→                      <span className="text-[10px] text-muted-foreground">· {tp.desc}</span>
+   430→                    </span>
+   431→                  </SelectItem>
+   432→                ))}
+   433→              </SelectContent>
+   434→            </Select>
+   435→          </div>
+   436→
+   437→          <div>
+   438→            <Label className="text-xs text-muted-foreground">Topic (optional)</Label>
+   439→            <Input
+   440→              value={topic}
+   441→              onChange={(e) => setTopic(e.target.value)}
+   442→              placeholder="e.g. Transitioning from IC to manager"
+   443→              className="mt-1"
+   444→            />
+   445→          </div>
+   446→
+   447→          <div className="grid grid-cols-2 gap-3">
+   448→            <div>
+   449→              <Label className="text-xs text-muted-foreground">Date & time</Label>
+   450→              <Input
+   451→                type="datetime-local"
+   452→                value={scheduledAt}
+   453→                onChange={(e) => setScheduledAt(e.target.value)}
+   454→                className="mt-1"
+   455→              />
+   456→            </div>
+   457→            <div>
+   458→              <Label className="text-xs text-muted-foreground">Duration</Label>
+   459→              <Select value={duration} onValueChange={setDuration}>
+   460→                <SelectTrigger className="mt-1">
+   461→                  <SelectValue />
+   462→                </SelectTrigger>
+   463→                <SelectContent>
+   464→                  <SelectItem value="30">30 minutes</SelectItem>
+   465→                  <SelectItem value="60">60 minutes</SelectItem>
+   466→                  <SelectItem value="90">90 minutes</SelectItem>
+   467→                </SelectContent>
+   468→              </Select>
+   469→            </div>
+   470→          </div>
+   471→
+   472→          {mentor.availability?.length > 0 && (
+   473→            <div className="rounded-lg border bg-muted/30 p-3">
+   474→              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+   475→                Mentor availability
+   476→              </div>
+   477→              <div className="flex flex-wrap gap-1.5">
+   478→                {mentor.availability.map((a) => (
+   479→                  <Badge key={a.day} variant="outline" className="text-[10px]">
+   480→                    {a.day}: {a.slots.join(', ')}
+   481→                  </Badge>
+   482→                ))}
+   483→              </div>
+   484→            </div>
+   485→          )}
+   486→
+   487→          <div className="flex items-center justify-between rounded-lg bg-brand-soft/40 p-3">
+   488→            <div className="flex items-center gap-2">
+   489→              <Video className="h-4 w-4 text-brand" />
+   490→              <span className="text-xs text-muted-foreground">Video session</span>
+   491→            </div>
+   492→            <div className="text-end">
+   493→              <div className="text-lg font-bold text-brand">
+   494→                ${(price / 100).toFixed(0)}
+   495→              </div>
+   496→              <div className="text-[10px] text-muted-foreground">
+   497→                {duration} min · {(mentor.rate / 100).toFixed(0)}/hr
+   498→              </div>
+   499→            </div>
+   500→          </div>
+   501→        </div>
+   502→
+   503→        <DialogFooter>
+   504→          <Button variant="outline" onClick={onClose} disabled={busy}>
+   505→            {t('cancel')}
+   506→          </Button>
+   507→          <Button
+   508→            onClick={submit}
+   509→            disabled={busy}
+   510→            className="bg-brand text-brand-foreground hover:bg-brand/90"
+   511→          >
+   512→            {busy ? <Spinner /> : <Calendar className="h-4 w-4" />}
+   513→            {t('book')} · ${(price / 100).toFixed(0)}
+   514→          </Button>
+   515→        </DialogFooter>
+   516→      </DialogContent>
+   517→    </Dialog>
+   518→  )
+   519→}
+   520→
+   521→// ---------------------------------------------------------------------------
+   522→// My Bookings tab
+   523→// ---------------------------------------------------------------------------
+   524→function MyBookings({
+   525→  bookings,
+   526→  onBrowse,
+   527→}: {
+   528→  bookings: Booking[]
+   529→  onBrowse: () => void
+   530→}) {
+   531→  const now = Date.now()
+   532→  const upcoming = bookings.filter(
+   533→    (b) => new Date(b.scheduledAt).getTime() >= now && b.status !== 'cancelled'
+   534→  )
+   535→  const past = bookings.filter(
+   536→    (b) => new Date(b.scheduledAt).getTime() < now || b.status === 'cancelled'
+   537→  )
+   538→
+   539→  if (bookings.length === 0) {
+   540→    return (
+   541→      <Card>
+   542→        <CardContent className="p-12 text-center text-muted-foreground">
+   543→          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-40" />
+   544→          <p className="mb-4">No bookings yet. Browse mentors and book your first session.</p>
+   545→          <Button
+   546→            size="sm"
+   547→            className="rounded-full bg-brand text-brand-foreground hover:bg-brand/90"
+   548→            onClick={onBrowse}
+   549→          >
+   550→            Browse mentors <ArrowRight className="h-3 w-3 flip-rtl" />
+   551→          </Button>
+   552→        </CardContent>
+   553→      </Card>
+   554→    )
+   555→  }
+   556→
+   557→  return (
+   558→    <div className="space-y-6">
+   559→      <BookingList title="Upcoming" bookings={upcoming} empty="No upcoming sessions." />
+   560→      <BookingList title="Past" bookings={past} empty="No past sessions yet." />
+   561→    </div>
+   562→  )
+   563→}
+   564→
+   565→function BookingList({
+   566→  title,
+   567→  bookings,
+   568→  empty,
+   569→}: {
+   570→  title: string
+   571→  bookings: Booking[]
+   572→  empty: string
+   573→}) {
+   574→  return (
+   575→    <div>
+   576→      <div className="flex items-center gap-2 mb-2.5">
+   577→        <h3 className="text-sm font-semibold">{title}</h3>
+   578→        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+   579→          {bookings.length}
+   580→        </Badge>
+   581→      </div>
+   582→      {bookings.length === 0 ? (
+   583→        <p className="text-xs text-muted-foreground ps-0.5">{empty}</p>
+   584→      ) : (
+   585→        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+   586→          {bookings.map((b, i) => (
+   587→            <BookingCard key={b.id} booking={b} index={i} />
+   588→          ))}
+   589→        </div>
+   590→      )}
+   591→    </div>
+   592→  )
+   593→}
+   594→
+   595→function BookingCard({ booking, index }: { booking: Booking; index: number }) {
+   596→  const mentor = booking.mentor
+   597→  const name = mentor?.user?.name || 'Mentor'
+   598→  const initials = name
+   599→    .split(' ')
+   600→    .map((p) => p[0])
+   601→    .filter(Boolean)
+   602→    .slice(0, 2)
+   603→    .join('')
+   604→    .toUpperCase()
+   605→  const typeMeta = BOOKING_TYPES.find((tp) => tp.value === booking.type) || BOOKING_TYPES[0]
+   606→  const TypeIcon = typeMeta.icon
+   607→  const date = new Date(booking.scheduledAt)
+   608→  const isPast = date.getTime() < Date.now()
+   609→
+   610→  return (
+   611→    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(index * 0.05, 0.4) }}>
+   612→      <Card className="hover:shadow-sm transition-shadow">
+   613→        <CardContent className="p-4">
+   614→          <div className="flex items-start gap-3">
+   615→            <Avatar className="h-10 w-10 ring-1 ring-brand/20">
+   616→              <AvatarFallback className="bg-brand-soft text-brand text-xs font-semibold">
+   617→                {initials}
+   618→              </AvatarFallback>
+   619→            </Avatar>
+   620→            <div className="flex-1 min-w-0">
+   621→              <div className="flex items-center justify-between gap-2">
+   622→                <div className="font-medium text-sm truncate">{name}</div>
+   623→                <Badge
+   624→                  variant="outline"
+   625→                  className={`text-[10px] capitalize shrink-0 ${STATUS_STYLE[booking.status] || ''}`}
+   626→                >
+   627→                  {booking.status}
+   628→                </Badge>
+   629→              </div>
+   630→              <div className="text-[11px] text-muted-foreground truncate">
+   631→                {mentor?.title}
+   632→              </div>
+   633→            </div>
+   634→          </div>
+   635→
+   636→          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+   637→            <Badge variant="outline" className="text-[10px] bg-brand-soft/30 border-brand/20">
+   638→              <TypeIcon className="h-3 w-3" /> {typeMeta.label}
+   639→            </Badge>
+   640→            <span className="flex items-center gap-1 text-muted-foreground">
+   641→              <Calendar className="h-3 w-3" />
+   642→              {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+   643→              · {date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+   644→            </span>
+   645→            <span className="flex items-center gap-1 text-muted-foreground">
+   646→              <Clock className="h-3 w-3" />
+   647→              {booking.duration}m
+   648→            </span>
+   649→            <span className="ms-auto text-brand font-semibold">
+   650→              ${(booking.price / 100).toFixed(0)}
+   651→            </span>
+   652→          </div>
+   653→
+   654→          {booking.topic && (
+   655→            <div className="mt-2 text-xs text-muted-foreground line-clamp-2">
+   656→              <span className="font-medium text-foreground">Topic: </span>
+   657→              {booking.topic}
+   658→            </div>
+   659→          )}
+   660→
+   661→          {isPast && booking.status === 'completed' && booking.feedback?.rating && (
+   662→            <div className="mt-2 flex items-center gap-1">
+   663→              {Array.from({ length: 5 }).map((_, i) => (
+   664→                <Star
+   665→                  key={i}
+   666→                  className={`h-3 w-3 ${
+   667→                    i < (booking.feedback?.rating || 0)
+   668→                      ? 'fill-amber-400 text-amber-400'
+   669→                      : 'text-muted-foreground/30'
+   670→                  }`}
+   671→                />
+   672→              ))}
+   673→              {booking.feedback?.comment && (
+   674→                <span className="text-[10px] text-muted-foreground ms-1 line-clamp-1">
+   675→                  · {booking.feedback.comment}
+   676→                </span>
+   677→              )}
+   678→            </div>
+   679→          )}
+   680→        </CardContent>
+   681→      </Card>
+   682→    </motion.div>
+   683→  )
+   684→}
+   685→
+   686→// ---------------------------------------------------------------------------
+   687→// Become a Mentor tab
+   688→// ---------------------------------------------------------------------------
+   689→function BecomeMentor({
+   690→  mentor,
+   691→  onSaved,
+   692→}: {
+   693→  mentor: Mentor | null
+   694→  onSaved: () => void
+   695→}) {
+   696→  const { t } = useApp()
+   697→  const { toast } = useToast()
+   698→  const { user, profile } = useProfile()
+   699→  const [form, setForm] = useState({
+   700→    title: '',
+   701→    expertise: [] as string[],
+   702→    industries: [] as string[],
+   703→    experience: 5,
+   704→    rate: 100,
+   705→    bio: '',
+   706→    availability: 'Mon: 17:00, 18:00\nWed: 17:00, 18:00',
+   707→  })
+   708→  const [busy, setBusy] = useState(false)
+   709→  const [hydrated, setHydrated] = useState(false)
+   710→
+   711→  // Hydrate form from existing mentor or profile.
+   712→  useEffect(() => {
+   713→    if (mentor) {
+   714→      setForm({
+   715→        title: mentor.title || '',
+   716→        expertise: mentor.expertise || [],
+   717→        industries: mentor.industries || [],
+   718→        experience: mentor.experience ?? 5,
+   719→        rate: Math.round((mentor.rate || 0) / 100),
+   720→        bio: mentor.bio || '',
+   721→        availability:
+   722→          mentor.availability?.length > 0
+   723→            ? mentor.availability
+   724→                .map((a) => `${a.day}: ${a.slots.join(', ')}`)
+   725→                .join('\n')
+   726→            : 'Mon: 17:00, 18:00\nWed: 17:00, 18:00',
+   727→      })
+   728→    } else if (profile) {
+   729→      setForm((f) => ({
+   730→        ...f,
+   731→        title: profile.targetRole ? `${profile.targetRole} & Career Coach` : 'Career Mentor',
+   732→        expertise: profile.strengths?.slice(0, 6) || [],
+   733→        industries: profile.industry ? [profile.industry] : [],
+   734→        experience: profile.experienceYears ?? 5,
+   735→        bio: profile.brandStatement || '',
+   736→      }))
+   737→    }
+   738→    setHydrated(true)
+   739→  }, [mentor?.id, profile?.id])
+   740→
+   741→  const parseAvailability = (text: string) => {
+   742→    return text
+   743→      .split('\n')
+   744→      .map((line) => line.trim())
+   745→      .filter(Boolean)
+   746→      .map((line) => {
+   747→        const [day, rest] = line.split(':')
+   748→        if (!day || !rest) return null
+   749→        const slots = rest
+   750→          .split(',')
+   751→          .map((s) => s.trim())
+   752→          .filter(Boolean)
+   753→        return slots.length ? { day: day.trim(), slots } : null
+   754→      })
+   755→      .filter(Boolean) as { day: string; slots: string[] }[]
+   756→  }
+   757→
+   758→  const save = async () => {
+   759→    if (!form.title.trim()) {
+   760→      toast({ title: 'Title is required', variant: 'destructive' })
+   761→      return
+   762→    }
+   763→    setBusy(true)
+   764→    try {
+   765→      const availability = parseAvailability(form.availability)
+   766→      const payload = {
+   767→        title: form.title.trim(),
+   768→        expertise: form.expertise,
+   769→        industries: form.industries,
+   770→        experience: Number(form.experience),
+   771→        rate: Number(form.rate) * 100, // dollars → cents
+   772→        bio: form.bio.trim() || null,
+   773→        availability,
+   774→      }
+   775→      if (mentor) {
+   776→        await api(`/api/mentors/${mentor.id}`, { method: 'PUT', body: payload })
+   777→        toast({ title: 'Mentor profile updated' })
+   778→      } else {
+   779→        await api('/api/mentors', { method: 'POST', body: payload })
+   780→        toast({ title: 'Mentor profile created', description: 'You are now listed in the marketplace.' })
+   781→      }
+   782→      onSaved()
+   783→    } catch (e) {
+   784→      toast({ title: 'Save failed', description: (e as Error).message, variant: 'destructive' })
+   785→    } finally {
+   786→      setBusy(false)
+   787→    }
+   788→  }
+   789→
+   790→  return (
+   791→    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+   792→      <Card>
+   793→        <CardContent className="p-5 space-y-4">
+   794→          <div className="flex items-center gap-2.5 pb-3 border-b">
+   795→            <div className="h-9 w-9 rounded-lg bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/20">
+   796→              <GraduationCap className="h-4.5 w-4.5" />
+   797→            </div>
+   798→            <div>
+   799→              <h3 className="font-semibold text-sm">
+   800→                {mentor ? 'Edit your mentor profile' : 'Become a mentor'}
+   801→              </h3>
+   802→              <p className="text-[11px] text-muted-foreground">
+   803→                Share your expertise. Get paid to help others grow.
+   804→              </p>
+   805→            </div>
+   806→            {mentor?.verified && (
+   807→              <Badge variant="outline" className="ms-auto text-[10px] text-brand border-brand/40">
+   808→                <Shield className="h-3 w-3" /> Verified
+   809→              </Badge>
+   810→            )}
+   811→          </div>
+   812→
+   813→          <div>
+   814→            <Label className="text-xs text-muted-foreground">Title / Headline</Label>
+   815→            <Input
+   816→              value={form.title}
+   817→              onChange={(e) => setForm({ ...form, title: e.target.value })}
+   818→              placeholder="e.g. Principal Engineer @ Google"
+   819→              className="mt-1"
+   820→            />
+   821→            <p className="text-[10px] text-muted-foreground mt-1">
+   822→              Shown prominently on your mentor card.
+   823→            </p>
+   824→          </div>
+   825→
+   826→          <ChipInput
+   827→            label="Expertise"
+   828→            placeholder="Add an expertise area and press Enter"
+   829→            values={form.expertise}
+   830→            onChange={(v) => setForm({ ...form, expertise: v })}
+   831→          />
+   832→
+   833→          <ChipInput
+   834→            label="Industries"
+   835→            placeholder="Add an industry and press Enter"
+   836→            values={form.industries}
+   837→            onChange={(v) => setForm({ ...form, industries: v })}
+   838→          />
+   839→
+   840→          <div className="grid grid-cols-2 gap-3">
+   841→            <div>
+   842→              <Label className="text-xs text-muted-foreground">Experience (years)</Label>
+   843→              <Input
+   844→                type="number"
+   845→                min={0}
+   846→                max={50}
+   847→                value={form.experience}
+   848→                onChange={(e) => setForm({ ...form, experience: Number(e.target.value) })}
+   849→                className="mt-1"
+   850→              />
+   851→            </div>
+   852→            <div>
+   853→              <Label className="text-xs text-muted-foreground">Rate (USD / hour)</Label>
+   854→              <div className="relative mt-1">
+   855→                <span className="absolute start-2.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+   856→                  $
+   857→                </span>
+   858→                <Input
+   859→                  type="number"
+   860→                  min={0}
+   861→                  step={10}
+   862→                  value={form.rate}
+   863→                  onChange={(e) => setForm({ ...form, rate: Number(e.target.value) })}
+   864→                  className="ps-6"
+   865→                />
+   866→              </div>
+   867→            </div>
+   868→          </div>
+   869→
+   870→          <div>
+   871→            <Label className="text-xs text-muted-foreground">Bio</Label>
+   872→            <Textarea
+   873→              value={form.bio}
+   874→              onChange={(e) => setForm({ ...form, bio: e.target.value })}
+   875→              placeholder="Tell mentees about your background, what you can help with, and your mentoring style."
+   876→              rows={4}
+   877→              className="mt-1 resize-none"
+   878→            />
+   879→          </div>
+   880→
+   881→          <div>
+   882→            <Label className="text-xs text-muted-foreground">Availability</Label>
+   883→            <Textarea
+   884→              value={form.availability}
+   885→              onChange={(e) => setForm({ ...form, availability: e.target.value })}
+   886→              placeholder={'Mon: 17:00, 18:00\nWed: 17:00, 18:00'}
+   887→              rows={3}
+   888→              className="mt-1 font-mono text-xs resize-none"
+   889→            />
+   890→            <p className="text-[10px] text-muted-foreground mt-1">
+   891→              One day per line. Format: <code>Day: HH:MM, HH:MM</code>
+   892→            </p>
+   893→          </div>
+   894→
+   895→          <div className="flex gap-2 pt-2 border-t">
+   896→            <Button
+   897→              onClick={save}
+   898→              disabled={busy || !hydrated}
+   899→              className="flex-1 bg-brand text-brand-foreground hover:bg-brand/90 rounded-full"
+   900→            >
+   901→              {busy ? <Spinner /> : <CheckCircle2 className="h-4 w-4" />}
+   902→              {mentor ? t('save') : t('create')} profile
+   903→            </Button>
+   904→          </div>
+   905→        </CardContent>
+   906→      </Card>
+   907→
+   908→      {/* Live preview + tips sidebar */}
+   909→      <div className="space-y-3">
+   910→        <Card>
+   911→          <CardContent className="p-4">
+   912→            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
+   913→              Live preview
+   914→            </div>
+   915→            <div className="rounded-xl border bg-card p-4">
+   916→              <div className="flex items-start gap-3 mb-2">
+   917→                <Avatar className="h-11 w-11 ring-2 ring-brand/20">
+   918→                  <AvatarFallback className="bg-brand-soft text-brand font-semibold text-sm">
+   919→                    {(user?.name || 'M')
+   920→                      .split(' ')
+   921→                      .map((p) => p[0])
+   922→                      .filter(Boolean)
+   923→                      .slice(0, 2)
+   924→                      .join('')
+   925→                      .toUpperCase()}
+   926→                  </AvatarFallback>
+   927→                </Avatar>
+   928→                <div className="flex-1 min-w-0">
+   929→                  <div className="flex items-center gap-1.5">
+   930→                    <h4 className="font-semibold text-sm truncate">
+   931→                      {user?.name || 'Your name'}
+   932→                    </h4>
+   933→                  </div>
+   934→                  <p className="text-[11px] text-muted-foreground truncate">
+   935→                    {form.title || 'Your title'}
+   936→                  </p>
+   937→                </div>
+   938→                <div className="flex items-center gap-1">
+   939→                  <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+   940→                  <span className="text-[10px] font-semibold text-amber-600">New</span>
+   941→                </div>
+   942→              </div>
+   943→              {form.bio && (
+   944→                <p className="text-[10px] text-muted-foreground line-clamp-2 mb-2">
+   945→                  {form.bio}
+   946→                </p>
+   947→              )}
+   948→              <div className="flex flex-wrap gap-1 mb-2">
+   949→                {form.expertise.slice(0, 3).map((e) => (
+   950→                  <Badge
+   951→                    key={e}
+   952→                    variant="outline"
+   953→                    className="text-[9px] bg-brand-soft/40 border-brand/20"
+   954→                  >
+   955→                    {e}
+   956→                  </Badge>
+   957→                ))}
+   958→              </div>
+   959→              <div className="flex items-center justify-between pt-2 border-t">
+   960→                <span className="text-sm font-bold text-brand">${form.rate}/session</span>
+   961→                <span className="text-[10px] text-muted-foreground">0 sessions</span>
+   962→              </div>
+   963→            </div>
+   964→          </CardContent>
+   965→        </Card>
+   966→
+   967→        <Card className="bg-brand-soft/30 border-brand/20">
+   968→          <CardContent className="p-4">
+   969→            <div className="flex items-center gap-2 mb-2">
+   970→              <Sparkles className="h-4 w-4 text-brand" />
+   971→              <span className="text-xs font-semibold">Tips to get booked</span>
+   972→            </div>
+   973→            <ul className="space-y-1.5 text-[11px] text-muted-foreground">
+   974→              <li className="flex items-start gap-1.5">
+   975→                <span className="text-brand mt-0.5">▸</span>
+   976→                Be specific in your title — company + role beats generic labels.
+   977→              </li>
+   978→              <li className="flex items-start gap-1.5">
+   979→                <span className="text-brand mt-0.5">▸</span>
+   980→                List 4-8 expertise areas — mentees search by skill.
+   981→              </li>
+   982→              <li className="flex items-start gap-1.5">
+   983→                <span className="text-brand mt-0.5">▸</span>
+   984→                Mention outcomes you have helped people achieve.
+   985→              </li>
+   986→              <li className="flex items-start gap-1.5">
+   987→                <span className="text-brand mt-0.5">▸</span>
+   988→                Competitive rates start at $100-200/hr for senior mentors.
+   989→              </li>
+   990→            </ul>
+   991→          </CardContent>
+   992→        </Card>
+   993→      </div>
+   994→    </div>
+   995→  )
+   996→}
+   997→
+   998→// ---------------------------------------------------------------------------
+   999→// Reusable chip input (expertise / industries)
+  1000→// ---------------------------------------------------------------------------
+  1001→function ChipInput({
+  1002→  label,
+  1003→  placeholder,
+  1004→  values,
+  1005→  onChange,
+  1006→}: {
+  1007→  label: string
+  1008→  placeholder: string
+  1009→  values: string[]
+  1010→  onChange: (v: string[]) => void
+  1011→}) {
+  1012→  const [draft, setDraft] = useState('')
+  1013→
+  1014→  const add = () => {
+  1015→    const v = draft.trim()
+  1016→    if (!v) return
+  1017→    if (values.includes(v)) {
+  1018→      setDraft('')
+  1019→      return
+  1020→    }
+  1021→    onChange([...values, v])
+  1022→    setDraft('')
+  1023→  }
+  1024→
+  1025→  return (
+  1026→    <div>
+  1027→      <Label className="text-xs text-muted-foreground">{label}</Label>
+  1028→      <div className="flex gap-2 mt-1">
+  1029→        <Input
+  1030→          value={draft}
+  1031→          onChange={(e) => setDraft(e.target.value)}
+  1032→          onKeyDown={(e) => {
+  1033→            if (e.key === 'Enter') {
+  1034→              e.preventDefault()
+  1035→              add()
+  1036→            }
+  1037→          }}
+  1038→          placeholder={placeholder}
+  1039→          className="flex-1"
+  1040→        />
+  1041→        <Button
+  1042→          type="button"
+  1043→          size="sm"
+  1044→          variant="outline"
+  1045→          className="rounded-full"
+  1046→          onClick={add}
+  1047→          disabled={!draft.trim()}
+  1048→        >
+  1049→          <Plus className="h-3.5 w-3.5" /> Add
+  1050→        </Button>
+  1051→      </div>
+  1052→      {values.length > 0 && (
+  1053→        <div className="flex flex-wrap gap-1 mt-2">
+  1054→          {values.map((v) => (
+  1055→            <Badge
+  1056→              key={v}
+  1057→              variant="outline"
+  1058→              className="text-[11px] bg-brand-soft/40 border-brand/20 gap-1 ps-2 pe-1 py-0.5"
+  1059→            >
+  1060→              {v}
+  1061→              <button
+  1062→                type="button"
+  1063→                onClick={() => onChange(values.filter((x) => x !== v))}
+  1064→                className="rounded-full hover:bg-brand/15 p-0.5"
+  1065→                aria-label={`Remove ${v}`}
+  1066→              >
+  1067→                <X className="h-2.5 w-2.5" />
+  1068→              </button>
+  1069→            </Badge>
+  1070→          ))}
+  1071→        </div>
+  1072→      )}
+  1073→    </div>
+  1074→  )
+  1075→}
+  1076→

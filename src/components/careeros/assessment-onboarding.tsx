@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useAppStore } from '@/lib/store'
@@ -35,7 +35,7 @@ const TIMELINES = [{ id: '3m', label: '3 months — aggressive' }, { id: '6m', l
 export function AssessmentOnboarding({ onComplete }: { onComplete?: () => void }) {
   const { t } = useApp()
   const { setOnboarding, onboardingOpen } = useAppStore()
-  const { save } = useProfile()
+  const { user, save } = useProfile()
   const { toast } = useToast()
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -66,7 +66,20 @@ export function AssessmentOnboarding({ onComplete }: { onComplete?: () => void }
     } finally { setBusy(false) }
   }
 
-  const close = () => { setOnboarding(false); onComplete?.() }
+  // Auto-trigger onboarding for new users (not yet onboarded) after profile loads.
+  useEffect(() => {
+    if (user && !user.onboarded && !onboardingOpen) {
+      const t = setTimeout(() => setOnboarding(true), 800)
+      return () => clearTimeout(t)
+    }
+  }, [user, onboardingOpen, setOnboarding])
+
+  const close = async () => {
+    // Mark user as onboarded so the dialog doesn't re-trigger on next load
+    try { await save({ onboarded: true }) } catch {}
+    setOnboarding(false)
+    onComplete?.()
+  }
 
   if (!onboardingOpen && !result) return null
 

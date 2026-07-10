@@ -84,7 +84,8 @@ export async function complete(
 
 /**
  * Ask the model to return strict JSON. Strips code fences and extracts the
- * first JSON object/array found in the response.
+ * first JSON object/array found in the response. Includes repair heuristics
+ * for common LLM JSON mistakes (trailing commas, single quotes, etc.).
  */
 export async function completeJson<T = unknown>(
   messages: ChatMessage[],
@@ -107,17 +108,126 @@ export async function completeJson<T = unknown>(
     .replace(/```\s*/g, '')
     .trim()
 
-  // Try direct parse first, then extract the largest JSON blob.
+  // Try direct parse first, then extract the largest JSON blob, then repair.
   let parsed: T
+  let finalRaw = raw
   try {
     parsed = JSON.parse(cleaned) as T
   } catch {
     const match = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/)
-    if (!match) throw new Error('Failed to parse AI JSON response')
-    parsed = JSON.parse(match[1]) as T
+    const candidate = match ? match[1] : cleaned
+    try {
+      parsed = JSON.parse(candidate) as T
+    } catch {
+      // Try JSON5 (lenient parser)
+      try {
+        const JSON5 = await import('json5')
+        parsed = JSON5.parse(candidate) as T
+      } catch {
+        // Try repair heuristics
+        const repaired = repairJson(candidate)
+        try {
+          parsed = JSON.parse(repaired) as T
+        } catch {
+          // Last resort: ask the AI to fix its own broken JSON (1 retry)
+          try {
+            const fixRes = await complete([
+              ...messages,
+              { role: 'system', content: 'CRITICAL: Respond with valid minified JSON only.' },
+              { role: 'user', content: `Your previous response was not valid JSON. Fix any syntax errors (missing brackets, commas, unescaped quotes) and return ONLY the corrected JSON.\n\nPrevious response:\n${candidate.slice(0, 3000)}` },
+            ], { json: true, retries: 1 })
+            const fixCleaned = fixRes.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim()
+            parsed = JSON.parse(fixCleaned) as T
+            finalRaw = fixRes
+          } catch (e2) {
+            throw new Error(`Failed to parse AI JSON response after all retries: ${(e2 as Error).message}. Raw (first 200 chars): ${candidate.slice(0, 200)}`)
+          }
+        }
+      }
+    }
   }
 
-  return { data: parsed, raw, tokens: Math.ceil(cleaned.length / 4) }
+  return { data: parsed, raw: finalRaw, tokens: Math.ceil(cleaned.length / 4) }
+}
+
+/**
+ * Repair common LLM JSON mistakes using a state machine that tracks nesting.
+ * Does NOT rely on error position (Bun/JavaScriptCore doesn't provide it).
+ *
+ * Strategy: walk the string char by char, tracking the nesting stack. When we
+ * find a `}` or `]` that doesn't match the top of the stack, insert the missing
+ * closer(s) first. At the end, close any remaining open brackets.
+ */
+function repairJson(text: string): string {
+  let s = text
+  // Quick fixes: trailing commas, single quotes
+  s = s.replace(/,\s*([}\]])/g, '$1')
+  s = s.replace(/'([^']*)'/g, '"$1"')
+
+  // State machine: track nesting and insert missing closers
+  const result: string[] = []
+  const stack: string[] = [] // '{' or '['
+  let inString = false
+  let escape = false
+
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+
+    if (escape) { result.push(ch); escape = false; continue }
+    if (ch === '\\' && inString) { result.push(ch); escape = true; continue }
+    if (ch === '"') { inString = !inString; result.push(ch); continue }
+    if (inString) { result.push(ch); continue }
+
+    if (ch === '{' || ch === '[') {
+      stack.push(ch)
+      result.push(ch)
+    } else if (ch === '}') {
+      // Close any open arrays before closing the object
+      while (stack.length > 0 && stack[stack.length - 1] === '[') {
+        stack.pop()
+        result.push(']')
+      }
+      if (stack.length > 0 && stack[stack.length - 1] === '{') {
+        stack.pop()
+      }
+      result.push(ch)
+    } else if (ch === ']') {
+      while (stack.length > 0 && stack[stack.length - 1] === '{') {
+        stack.pop()
+        result.push('}')
+      }
+      if (stack.length > 0 && stack[stack.length - 1] === '[') {
+        stack.pop()
+      }
+      result.push(ch)
+    } else if (ch === ':') {
+      // KEY HEURISTIC: A colon inside an array means the array wasn't closed.
+      // In valid JSON, arrays contain values separated by commas, never "key": "value".
+      // So if we see : and the top of the stack is [, the previous , should
+      // have been ] instead. Close the array(s) now by inserting ] before the ,.
+      while (stack.length > 0 && stack[stack.length - 1] === '[') {
+        stack.pop()
+        // Find the last ',' and insert ']' before it
+        for (let j = result.length - 1; j >= 0; j--) {
+          if (result[j] === ',') {
+            result.splice(j, 0, ']')
+            break
+          }
+          if (result[j] === '{' || result[j] === '[') break
+        }
+      }
+      result.push(ch)
+    } else {
+      result.push(ch)
+    }
+  }
+
+  // Close any remaining open brackets at the end
+  for (let i = stack.length - 1; i >= 0; i--) {
+    result.push(stack[i] === '{' ? '}' : ']')
+  }
+
+  return result.join('')
 }
 
 // ---------------------------------------------------------------------------

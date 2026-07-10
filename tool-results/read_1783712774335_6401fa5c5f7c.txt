@@ -1,0 +1,402 @@
+     1→# CareerOS AI — Worklog
+     2→
+     3→---
+     4→Task ID: 1-12
+     5→Agent: main (Z.ai Code)
+     6→Task: Build CareerOS AI — a premium AI Career Operating System on Next.js 16 with 9 modules, dark/light + EN/AR RTL, real LLM integration, and Prisma persistence.
+     7→
+     8→Work Log:
+     9→- Designed scalable Prisma schema: User, Resume, CoverLetter, Interview, CoachSession, Job, SkillProfile, AiUsage, Notification.
+    10→- Built AI gateway (`src/lib/ai.ts`) wrapping z-ai-web-dev-sdk with JSON-mode completion, retries, streaming fallback, and domain helpers (resume enhance/generate, ATS analysis, cover letter, interview next/evaluate, coach chat, skill analysis).
+    11→- Added i18n dictionary EN/AR with RTL dir switching + AppProvider context.
+    12→- Built premium theme system (emerald accent, glass, grid-bg, gradient text, custom scrollbar) in globals.css.
+    13→- Implemented all API routes: bootstrap, resumes (CRUD + generate + enhance), ats, cover-letter (CRUD), interview (create/next/evaluate), coach (create/chat), jobs (CRUD), skills (analysis), dashboard (aggregate stats).
+    14→- Built app shell: sidebar (grouped nav), topbar (theme/lang toggle, user avatar, plan badge), mobile sheet nav, sticky footer.
+    15→- Built 9 modules:
+    16→  - Dashboard: hero greeting, 4 stat cards, area+pie charts, quick actions, recent activity.
+    17→  - Resume Engine: list + editor with 4 live-preview templates (modern/executive/creative/ats), accent colors, AI enhance per bullet (4 modes), AI generate-from-context dialog, full experience/education/skills/projects/certs editing.
+    18→  - ATS Intelligence: resume vs JD analysis with animated score ring, grade, keyword match/missing, strengths/weaknesses, formatting issues, prioritized recommendations.
+    19→  - Cover Letter Engine: 5 letter types, tone selector, resume context loading, generation + library with copy/delete.
+    20→  - Interview Simulator: 4 interview types, conversational UI with per-answer AI evaluation (score/strengths/improvements/model answer), final summary + score.
+    21→  - Career Coach: 6 focus areas, suggestion chips, markdown rendering, multi-session.
+    22→  - Job Tracker: 7-column kanban pipeline with stage navigation, priority, notes, inline editing.
+    23→  - Skill Intelligence: gap analysis with priority, timeline roadmap with courses, certifications, estimated time-to-ready.
+    24→  - Admin: platform KPIs (users/AI calls/MRR/active), revenue trend, plan distribution, feature usage bar chart, system health.
+    25→- Fixed ESLint `set-state-in-effect` by using inline `.then()` pattern in jobs effect.
+    26→- Lint passes clean.
+    27→
+    28→Stage Summary:
+    29→- Full-stack platform complete with 9 working modules, real AI integration, persistence, premium UI, dark/light + EN/AR RTL.
+    30→- Next: agent-browser end-to-end verification of golden paths + responsiveness + sticky footer.
+    31→
+    32→---
+    33→Task ID: 12 (verification)
+    34→Agent: main (Z.ai Code)
+    35→Task: End-to-end verification of CareerOS AI with agent-browser.
+    36→
+    37→Work Log:
+    38→- Started dev server (double-fork daemonization for persistence across commands).
+    39→- Verified all 9 modules render via agent-browser: Dashboard, Resume Engine, ATS, Cover Letter, Interview, Coach, Jobs, Skills, Admin.
+    40→- Golden-path AI flows verified end-to-end:
+    41→  - Career Coach: sent message → LLM replied with detailed 6-month promotion plan (markdown). POST /api/coach/:id/chat 200 in 3.6s.
+    42→  - ATS Intelligence: submitted resume + JD → structured JSON analysis: 92/100, grade A, keyword match 90%, matched/missing keywords, 5 strengths, recommendations with priority.
+    43→  - Interview Simulator: full loop Q1→A1(evaluated 85/100 with feedback)→Q2 (context-aware follow-up). POST /api/interview/:id/next 200.
+    44→- Theme toggle verified (dark↔light via html className).
+    45→- Language toggle verified (English LTR ↔ Arabic RTL with full translation, dir=rtl).
+    46→- Mobile responsive verified (hamburger menu at 390px viewport).
+    47→- Sticky footer verified (min-h-screen flex flex-col + mt-auto pattern).
+    48→- Fixed 3 issues found during verification:
+    49→  1. Button-in-button nesting in resume list → changed outer to div[role=button].
+    50→  2. Duplicate undefined keys from seed data missing ids → added normalizeResumeData().
+    51→  3. Interview first-question + answer-loop failing ("messages 参数非法") → (a) ensured a user message exists when history empty, (b) stripped extra `evaluation` field from messages sent to ZAI API, (c) fixed stale-closure in askNext/submit via functional setState, (d) fixed eval condition to evaluate first answer.
+    52→- Final state: zero console errors, zero page errors, lint clean.
+    53→
+    54→Stage Summary:
+    55→- CareerOS AI is fully functional and browser-verified. All 9 modules work, all 3 AI golden paths (coach chat, ATS analysis, interview simulator) confirmed end-to-end with real LLM responses. Dark/light + EN/AR RTL + responsive + sticky footer all verified. Production-ready.
+    56→
+    57→---
+    58→Task ID: P2-1,2,3 (Foundation)
+    59→Agent: main (Z.ai Code)
+    60→Task: Phase 2 enterprise upgrade foundation — AI orchestration, career profile hub, command palette, onboarding.
+    61→
+    62→Work Log:
+    63→- Upgraded Prisma schema: added CareerProfile, ResumeVersion, Portfolio, BrandingAnalysis, CareerPlan, Company, Contact, Reminder, AuditLog, FeatureFlag; extended User(onboarded), Resume(careerMode, aiScore), Interview(mode, confidence), Job(companyId), AiUsage(model, latencyMs). Pushed to DB.
+    64→- Built AI orchestration:
+    65→  - src/lib/prompts.ts: versioned prompt registry (14 prompts) with ModelTier routing (fast/balanced/quality) + temperature.
+    66→  - src/lib/ai-memory.ts: loads career profile + top skills + current role into a memory block injected into every prompt.
+    67→  - Extended src/lib/ai.ts with run()/runText()/trackUsage() that compose registry system + memory + caller, route by tier, parse JSON, and persist usage with model/cost/latency.
+    68→- Extended store.ts with new ModuleIds (profile, portfolio, branding, intelligence, aicenter, plans) + paletteOpen + onboardingOpen.
+    69→- Added i18n keys for all new modules (EN + AR).
+    70→- Extended types.ts: 5 new templates (developer/designer/academic/medical/government) + CAREER_MODES.
+    71→- Built Career Profile: API (/api/profile GET/PUT upsert), ProfileProvider context (single source of truth), ProfileModule (completeness ring, identity/target/presence/goals/strengths-values editors).
+    72→- Built Command Palette (⌘K/Ctrl+K) with module nav + profile-aware quick actions.
+    73→- Built Onboarding (4-step first-run flow, auto-triggers for non-onboarded users, saves to profile with onboarded=true).
+    74→
+    75→Stage Summary:
+    76→- Foundation complete. Career Profile is the connective tissue; all AI calls now go through the orchestrated gateway with memory + usage tracking.
+    77→- Next: dispatch parallel subagents for Portfolio, Branding, Career Intelligence, Plans/AI-Center/Admin modules, then upgrade existing modules (resume/ats/interview/jobs) to be profile-aware.
+    78→- IMPORTANT for subagents: the orchestrated AI gateway is `import { run, runText } from '@/lib/ai'` — call `run(promptKey, userId, userName, caller, { json:true })`. Profile available via `useProfile()` client hook and `/api/profile` API. Shared types in src/lib/types.ts. Existing module patterns in src/components/modules/*. Do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — only create your module file + API routes. Wire-up is done by main agent.
+    79→
+    80→---
+    81→Task ID: P2-4c
+    82→Agent: full-stack-developer (Career Intelligence)
+    83→Task: Build Career Intelligence Engine module + API.
+    84→
+    85→Work Log:
+    86→- Read worklog + existing module patterns (skills.tsx, module-header.tsx, ai.ts orchestrated run(), prompts.ts career_plan, profile-context useProfile, prisma CareerPlan schema, server.ts getCurrentUser/err/parseJson, api-client api()).
+    87→- Created `/api/intelligence` route:
+    88→  - GET — returns user's past CareerPlans (newest first, ≤50), JSON fields deserialized (roadmap/salaryStrategy/promotionPlan/marketInsights).
+    89→  - POST — loads CareerProfile + latest resume (top skills + current title), builds the promptText per spec, calls `run('career_plan', userId, userName, [{role:'user', content: promptText}], { json:true })`, defensively normalizes the LLM payload, persists a CareerPlan row with JSON-stringified nested objects + readinessScore, writes an auditLog entry, returns the plan + meta {tokens, model, latencyMs}.
+    90→- Created `intelligence.tsx` module:
+    91→  - ModuleHeader (Compass icon) + t('intelligenceTitle')/t('intelligenceSub').
+    92→  - Hero "Generate my roadmap" card with grid-bg, auto-fills targetRole from useProfile(); if no profile targetRole, shows amber CTA linking to profile module via useAppStore.set('profile').
+    93→  - Results dashboard (framer-motion reveal):
+    94→    - Hero stats card: animated SVG readiness ring (color-coded by score), target role badge, time-to-target (computed from roadmap durations), next 3 moves as chips.
+    95→    - Vertical roadmap timeline mirroring skills.tsx (brand dots, ring-4 ring-brand/20) with phase/duration/focus, milestones (CheckCircle2), skill chips, and a brand-tinted "visibility moves" block per phase.
+    96→    - 2-col grid: Salary strategy card (current vs target tiles, numbered steps, negotiation tip) + Promotion plan card (amber gap-to-next, scope chips, evidence list, italic conversation script with Quote icon).
+    97→    - Market insights cards grid (topic/insight/action with ArrowRight).
+    98→  - Sticky history sidebar: GET /api/intelligence, ScrollArea (max-h-96) list of past plans with target role, readiness badge, phase count, time-ago; click to swap active plan; empty state.
+    99→  - Premium styling: emerald accent, glass card grid, brand-soft tints, hover transitions, RTL-safe (ps-/pe-/start-/end-), responsive 1→2 col layouts, max-h-96 scroll on history.
+   100→- Verified: `bun run lint` clean on both new files (the only remaining error is a pre-existing set-state-in-effect in profile-context.tsx which is out of scope and not touched).
+   101→- Dev server still healthy (200s on /).
+   102→
+   103→Stage Summary:
+   104→- Files created (only these two):
+   105→  - `src/app/api/intelligence/route.ts` — GET list + POST generate (orchestrated career_plan prompt, CareerPlan persistence, audit log).
+   106→  - `src/components/modules/intelligence.tsx` — unified roadmap dashboard with readiness ring, timeline, salary/promotion/market cards, history sidebar.
+   107→- Decisions: defensively normalize the LLM JSON (clamp readinessScore 0–100, default missing nested objects) so the UI never crashes on a partial model response; reuse the orchestrated `run()` gateway (quality tier) instead of a direct `ai.*` call to keep memory + usage tracking wired; do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — module + API only, wire-up deferred to main agent.
+   108→
+   109→---
+   110→Task ID: P2-4a
+   111→Agent: full-stack-developer (Portfolio)
+   112→Task: Build Portfolio Builder module + API + public view.
+   113→
+   114→Work Log:
+   115→- Read worklog + coach.tsx + module-header + loading + api-client + server + ai + store + i18n + schema + profile-context to internalize the existing patterns (emerald accent, glass cards, rounded-2xl, framer-motion entrance, useApp/useToast/api/getCurrentUser/err, parseJson for JSON-string columns).
+   116→- Created `/src/app/api/portfolio/route.ts` (GET list, POST create) with a `uniqueSlug()` helper that lowercases + slugifies the title and appends `-2`, `-3` … until globally unique. Defaults: theme=aurora, accent=emerald, sections = ordered [hero, about, experience, skills, projects, certifications(hidden), contact], published=false. Writes an auditLog row on create.
+   117→- Created `/src/app/api/portfolio/[id]/route.ts` (PUT update title/tagline/bio/theme/accent/sections/published/slug, DELETE) with owner-scoped authorization check (404 if not owned). PUT keeps slug stable across edits unless an explicit unique slug is supplied. Audit-logs update + delete.
+   118→- Created `/src/app/api/portfolio/public/[slug]/route.ts` — GET public fetch by slug. 404s when portfolio not found or unpublished. Increments `views` and additionally loads the owner's most recently updated resume to enrich the public page (experience/skills/projects/certs/contact). Returns portfolio + owner + resume in a clean JSON shape.
+   119→- Created `/src/app/p/[slug]/page.tsx` — server component (`export const dynamic = 'force-dynamic'`) that fetches the portfolio by slug directly via `db.portfolio.findUnique({ include: { user: true } })`, increments views (best-effort `.catch(() => {})`), and renders a visually stunning public page:
+   120→  - Sticky glass header with brand chip + "Built with CareerOS" CTA back to /?module=portfolio.
+   121→  - Gradient-mesh hero (aurora/dark/bold) or radial-gradient hero (minimal/paper) with name (from user), tagline, bio, and contact pills.
+   122→  - Section renderer walks `portfolio.sections` config (visible only) and renders hero/about/experience/skills/projects/certifications/contact. Experience/skills/projects/certs pull from the owner's latest resume when available.
+   123→  - Five theme variants (aurora/minimal/bold/dark/paper) with distinct backgrounds, text colors and glass-card treatments, plus six accent colors mapped to hex pairs (fg + soft + glow). Inline `--pf-accent*` CSS variables drive section accents.
+   124→  - "Portfolio not found" fallback for unpublished/missing slugs.
+   125→- Created `/src/components/modules/portfolio.tsx` — 'use client' module:
+   126→  - ModuleHeader with t('portfolioTitle')/t('portfolioSub'), Globe icon, "New" create button.
+   127→  - List view: animated grid of portfolio cards with accent-colored Globe icon, Live/Draft badge, view count + last-updated date.
+   128→  - Editor view: sticky back + save + delete buttons; 2-column layout with Tabs (Content / Design / Sections / Share) on the left and a sticky right rail (Share card, Views card, mini preview card).
+   129→  - Content tab: title/tagline/bio inputs + "Prefill from profile" button (pulls from useProfile() — headline→tagline, brandStatement/careerGoals→bio).
+   130→  - Design tab: 5-theme grid selector (aurora/minimal/bold/dark/paper) + 6-accent color picker (emerald/teal/amber/rose/violet/slate) with check indicator on active.
+   131→  - Sections tab: per-section rename Input + type badge + visibility Switch (writes JSON array of {id, type, title, visible}).
+   132→  - Share card: public-link row with copy + open buttons, a deterministic inline "QR-style" pattern box generated from the slug (no new packages), Publish/Unpublish toggle button, and origin-aware URL display (avoids SSR/hydration mismatch via `useState` + `useEffect` to read `window.location.origin`).
+   133→  - Views card: large view count + Eye icon + helper copy.
+   134→  - All actions use api() + useToast for feedback; optimistic publish-toggle revert on failure.
+   135→- Followed the established ESLint workaround: used inline `.then()` in the mount effect instead of a `useCallback`+`useEffect(()=>{load()},[load])` pattern (matches jobs.tsx).
+   136→- Lint passes for all 5 new files (only pre-existing profile-context.tsx lint error remains, untouched as instructed). TypeScript clean for all new files (pre-existing errors in i18n.ts, mobile-nav.tsx, etc. untouched).
+   137→
+   138→Stage Summary:
+   139→- Files created (5):
+   140→  - src/app/api/portfolio/route.ts
+   141→  - src/app/api/portfolio/[id]/route.ts
+   142→  - src/app/api/portfolio/public/[slug]/route.ts
+   143→  - src/app/p/[slug]/page.tsx
+   144→  - src/components/modules/portfolio.tsx
+   145→- Key decisions:
+   146→  - Public-by-slug route lives under /api/portfolio/public/[slug] to avoid route-segment conflict with /api/portfolio/[id].
+   147→  - Public page is a pure server component (no 'use client', no framer-motion) — uses inline CSS variables + theme helpers for stunning visuals without shipping client JS.
+   148→  - Accent colors are duplicated as hex constants in the public page (server component can't import client-only types easily and we want zero client bundle on the public page); ACCENTS in src/lib/types.ts stays the source of truth for the editor.
+   149→  - Slug stays stable across edits to keep public links durable; only explicit slug change requests trigger regeneration with uniqueness check.
+   150→  - Sections config stored as JSON string column (`sections`), normalized on read by both the API and the module.
+   151→  - No new npm dependencies; QR rendered as a deterministic 8×8 inline pattern from the slug — no QR library.
+   152→  - Module is wired to existing useProfile() so "Prefill from profile" pulls name/headline/brand-statement from the unified career profile hub.
+   153→- Module is ready for wire-up: main agent needs to add `{active === 'portfolio' && <PortfolioModule />}` to src/app/page.tsx (and an import) plus a sidebar entry — store.ts already has 'portfolio' ModuleId.
+   154→
+   155→---
+   156→Task ID: P2-4d
+   157→Agent: full-stack-developer (Plans/AI-Center/Admin)
+   158→Task: Build Plans & Billing + AI Center + upgrade Admin with audit logs, feature flags, AI cost monitoring.
+   159→
+   160→Work Log:
+   161→- Read worklog + reference files (admin.tsx, module-header.tsx, ai.ts trackUsage/run, prompts.ts listPrompts, server.ts/api-client.ts, profile-context.tsx useProfile, schema.prisma AuditLog/FeatureFlag/AiUsage/User.plan, store.ts ModuleIds, i18n.ts key check).
+   162→- Built Plans & Billing module (src/components/modules/plans.tsx): current plan card with cycle usage (calls/tokens/cost/feature count) + progress vs limit; 4 plan comparison cards (Free/Pro/Premium/Enterprise) with feature lists, per-plan accent icons, "Switch to X" button that PUTs /api/plans; 6-row simulated invoices table. Uses useProfile() for live plan, useToast for feedback, motion entrance, emerald accent.
+   163→- Built AI Center module (src/components/modules/aicenter.tsx): 4 KPI cards (calls/tokens/cost/avgLatency); 14-day usage AreaChart; Memory Status card pulling from useProfile() (active/inactive state, strengths/values counts, AI memory explainer); by-feature BarChart + model-tier PieChart with legend; Prompt Registry table (key/version/model/temperature from listPrompts); recent usage list with success/feature/tokens/latency per row.
+   164→- Upgraded Admin module (OVERWRITE src/components/modules/admin.tsx): KEPT existing KPI cards (users/AI calls/MRR/active), revenue AreaChart, plan distribution Progress, feature usage BarChart, system health. ADDED: Audit Log card (table of recent AuditLog entries from /api/audit with action/entity/user/when); Feature Flags card (list from /api/flags with Switch toggle + Slider rollout, optimistic PUT with rollback on error); AI Cost Monitoring card (total cost, cost-by-model-tier PieChart, top-5 features by cost Progress bars, avg latency / total tokens / cost-per-1k-calls footer).
+   165→- Built 4 API routes:
+   166→  - /api/plans GET (plan + cycle usage with byFeature aggregation + simulated invoices) / PUT (update user.plan + audit log).
+   167→  - /api/aicenter GET (listPrompts() + last 100 AiUsage + totals + byFeature + byModel + 14-day trend).
+   168→  - /api/audit GET (?limit capped 1-200, includes user.name) / POST (manual entry).
+   169→  - /api/flags GET (seeds 6 defaults if empty: voice_interviews, portfolio_public, ai_coach, ats_v2, ats_recruiter_sim, career_intelligence) / PUT { key, enabled?, rollout? } + audit log.
+   170→- Ran `bun run db:generate` so the Prisma client picks up AuditLog + FeatureFlag models (the long-running dev server had a stale client cached in globalThis — killed PID 2181 and restarted dev server so the fresh client loaded; verified FeatureFlag/AuditLog tables exist via direct PrismaClient probe).
+   171→- Lint: my 7 new/modified files pass clean. The single remaining lint error (react-hooks/set-state-in-effect in profile-context.tsx) is pre-existing from the foundation agent and outside this task's scope.
+   172→- End-to-end verified via curl: GET /api/plans 200, GET /api/aicenter 200, GET /api/flags 200 (seeded 6 flags), GET /api/audit 200, PUT /api/flags (toggle + rollout) 200 with audit log written, PUT /api/plans 200.
+   173→
+   174→Stage Summary:
+   175→- Files created: src/components/modules/plans.tsx, src/components/modules/aicenter.tsx, src/app/api/plans/route.ts, src/app/api/aicenter/route.ts, src/app/api/audit/route.ts, src/app/api/flags/route.ts.
+   176→- Files modified (overwrite): src/components/modules/admin.tsx.
+   177→- Decisions: PLAN_LIMITS uses calls:null for Enterprise (unlimited); invoices simulated from plan price over 6 months; admin AI-cost data computed client-side from /api/aicenter usage array (no new endpoint per task constraint); flag toggles use optimistic UI with rollback on error; audit log entries written for plan.change and flag.update actions. All three modules use ModuleHeader + emerald accent + glass cards + motion entrance to match existing module visual style.
+   178→- Wire-up note for main agent: page.tsx needs to render PlansModule + AiCenterModule for 'plans'/'aicenter' ModuleIds, and ProfileProvider must wrap the app so useProfile() works in plans.tsx + aicenter.tsx (sidebar/topbar also need the new module entries).
+   179→
+   180→---
+   181→Task ID: P2-4b
+   182→Agent: full-stack-developer (Branding)
+   183→Task: Build LinkedIn & Branding Optimizer module + API.
+   184→
+   185→Work Log:
+   186→- Read worklog + reference files (ats.tsx for the ScoreRing pattern + breakdown layout, intelligence.tsx for the profile-aware generate card + sticky history sidebar, module-header, ai.ts run() signature, prompts.ts linkedin_optimize + brand_identity, server.ts getCurrentUser/err/parseJson, api-client, profile-context useProfile, schema BrandingAnalysis, store ModuleId 'branding', i18n brandingTitle/brandingSub).
+   187→- Created `/api/branding/route.ts`:
+   188→  - GET — returns the user's BrandingAnalysis rows (newest first, ≤50) with the JSON `data` column deserialized into the typed payload.
+   189→  - POST — accepts `{ type:'linkedin'|'identity', profileData }`. For linkedin: builds the prompt per spec (headline/about/targetRole/experience → JSON shape with score, headlineScore, aboutScore, optimized headline + about, strengths/weaknesses, contentIdeas, keywordGaps), calls `run('linkedin_optimize', userId, userName, [user msg], { json:true })`, defensively normalizes the LLM payload (clamps 0–100, defaults missing arrays), persists a BrandingAnalysis row (type/headline/about/score/data) and writes an AuditLog entry (try/catch). For identity: pulls profile fields via the API caller (the module sends name/headline/targetRole/industry/seniority/brandStatement/strengths/values/linkedinUrl/etc.), calls `run('brand_identity', …, { json:true })` with the spec'd prompt, persists with type/score/data (no headline/about) and audit logs. Both branches return `{ analysis: row, meta }` via NextResponse.json or `err(e)` on failure.
+   190→- Created `branding.tsx` ('use client'):
+   191→  - ModuleHeader (BadgeCheck icon) + t('brandingTitle')/t('brandingSub').
+   192→  - Two tabs (shadcn Tabs): "LinkedIn" (Linkedin icon) and "Brand Identity" (Fingerprint icon).
+   193→  - LinkedIn tab: input card with headline / about / target role / brief experience; pre-fills headline + about + role from useProfile()/user on first mount; "Analyze with AI" button POSTs type:'linkedin'. Results (motion reveal): score hero card (animated SVG ScoreRing + headline/about sub-score Progress bars), 2-col optimized headline + optimized about cards each with a CopyButton (navigator.clipboard.writeText + toast), strengths/weaknesses lists (emerald/amber bullets), keyword gaps as amber outline badges, content ideas as a 2-col card grid with topic + angle.
+   194→  - Identity tab: grid-bg hero with "Run brand audit" button that POSTs type:'identity' with the full profile payload (no manual inputs — pulled from useProfile()). Results: overall brand score ring + 3 sub-score Progress bars (narrative/presence/differentiation), analysis text card, numbered suggestions list, networking targets as cards (who + type badge + why). When no identity analysis yet, shows a profile-context preview card listing all the profile fields the audit will use.
+   195→  - Sticky right sidebar (lg:sticky lg:top-4): ScrollArea max-h-96 list of past analyses (both types mixed), each showing type icon, score badge, headline/title, time-ago. Clicking an entry sets it active and switches the active tab to match its type. Per-tab active payload resolver falls back to the most recent matching analysis so each tab always shows the latest of its type.
+   196→  - Premium styling: emerald accent (bg-brand text-brand-foreground rounded-full buttons), bg-brand-soft/40 tint on score-ring panels, glass cards with hover:border-brand/40 + hover:bg-brand/5 transitions, framer-motion entrance (initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}) on results + cards, ScoreRing mirrors the ats.tsx pattern with color-coded stroke (oklch green ≥75, amber ≥50, red <50), RTL-safe `border-e` + `-me-2 pe-2` on ScrollArea, responsive 1→2 col layouts, mobile-first.
+   197→- Followed the established inline `.then()` pattern in the mount effect (no `useCallback`+`useEffect(()=>{load()},[load])` shape, matching jobs.tsx + intelligence.tsx) to avoid the `react-hooks/set-state-in-effect` lint rule.
+   198→- `bun run lint` passes clean (zero errors, zero warnings) for both new files. The single pre-existing `set-state-in-effect` lint error in profile-context.tsx is untouched and out of scope.
+   199→- Smoke-tested GET /api/branding via curl → 200 `{"analyses":[]}` (fresh DB). Dev server still healthy.
+   200→
+   201→Stage Summary:
+   202→- Files created (only these two):
+   203→  - `src/app/api/branding/route.ts` — GET list + POST run (linkedin_optimize | brand_identity orchestrated prompts, BrandingAnalysis persistence, AuditLog entries, defensive payload normalization).
+   204→  - `src/components/modules/branding.tsx` — two-tab module (LinkedIn optimizer with manual inputs + optimized headline/about + copy buttons + content ideas; Brand Identity audit pulling from useProfile() with score ring, 3 sub-scores, analysis, suggestions, networking targets) + sticky history sidebar.
+   205→- Key decisions:
+   206→  - Per-tab active payload resolver falls back to the latest matching analysis when the current `active` isn't of that tab's type — so each tab always renders its latest result instead of going empty when the user opens a history item of the other type.
+   207→  - Identity tab pulls 100% from useProfile() (no manual inputs) per the spec; the "Profile context" preview card surfaces exactly what the audit will use so the user knows what to update.
+   208→  - ScoreRing color tone reuses the ATS module's oklch triple (green/amber/red) for visual consistency across all scored modules.
+   209→  - Audit log entries use actions `branding.linkedin` / `branding.identity` (entity=BrandingAnalysis, meta={tokens,model,latencyMs}) — same pattern as intelligence.generate.
+   210→  - Do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — module + API only. Wire-up (sidebar entry + page.tsx render) deferred to main agent; `ModuleId 'branding'` already exists in store.ts and `brandingTitle`/`brandingSub` already exist in i18n.ts.
+   211→
+   212→---
+   213→Task ID: P2-5..9 (Upgrades + wire-up)
+   214→Agent: main (Z.ai Code)
+   215→Task: Wire all new modules + upgrade Resume/ATS/Interview/Jobs to be profile-aware.
+   216→
+   217→Work Log:
+   218→- Wired: layout.tsx wraps AppProvider > ProfileProvider. sidebar.tsx full nav (15 modules grouped: you/build/grow/manage) + ⌘K palette trigger + profile-aware status card. mobile-nav.tsx mirrors. topbar.tsx uses useProfile + palette button. page.tsx renders all 15 modules + CommandPalette + Onboarding.
+   219→- Resume Engine upgrade: career-mode selector (developer/designer/executive/academic/medical/government/general), new "Insights" tab with AI quality scoring (5 dimensions + quick wins, animated score ring), version history timeline (POST snapshot checkpoints). generate route now uses orchestrated run('resume_generate') — profile-aware. Added /api/resumes/[id]/score + /api/resumes/[id]/versions. ResumeMeta type extended (careerMode, aiScore). 5 new templates in types.ts.
+   220→- ATS 2.0: added /api/ats/recruiter (6-second recruiter simulation: verdict/confidence/what stood out/skipped/red flags) + /api/ats/competitor (candidate vs ideal competitor comparison: dual score rings, hidden keywords, edge-by-edge table, advice). Module adds two buttons + two result cards.
+   221→- Interview Pro: added voice mode. New /api/tts (ZAI audio.tts → WAV buffer) + /api/asr (ZAI audio.asr from base64 → text). Setup dialog gains text/voice mode toggle. Voice mode renders VoiceRecorder (MediaRecorder → base64 → /api/asr → fill answer) + SpeakButton (plays AI question via /api/tts). interview create API accepts mode. Interview type gains mode/confidence.
+   222→- Job CRM: added /api/companies (web_search via ZAI functions.invoke for company research), /api/contacts (recruiters/hiring managers/referrals CRUD), /api/reminders (follow-ups/interviews/deadlines with due dates). Jobs module restructured into Tabs: Pipeline (existing kanban) + Companies (research panel) + Contacts (CRM) + Reminders (scheduler with overdue badges).
+   223→- PWA: public/manifest.json + layout metadata manifest/icons.
+   224→
+   225→Stage Summary:
+   226→- All Phase 2 upgrades complete. Lint clean. Page HTTP 200.
+   227→- Next: agent-browser end-to-end verification of new modules + onboarding + command palette + voice + CRM.
+   228→
+   229→---
+   230→Task ID: P2-10 (Verification)
+   231→Agent: main (Z.ai Code)
+   232→Task: PWA + agent-browser end-to-end verification of all Phase 2 modules.
+   233→
+   234→Work Log:
+   235→- Agent-browser verified all new + upgraded modules render with zero page/console errors:
+   236→  - Onboarding: 4-step first-run flow auto-triggered → completed → profile saved → sidebar shows "AI is personalized".
+   237→  - Command Palette (⌘K): opens via meta+k, lists all 15 modules + profile-aware quick actions.
+   238→  - Career Profile: completeness ring (42%), identity/target/presence/goals/strengths-values editors.
+   239→  - Career Intelligence: AI generated full roadmap (readiness 25, target Staff SE, 2y timeline, 3 phases, next moves, salary strategy, promotion plan, market insights) — profile-aware.
+   240→  - AI Center: live usage analytics (6 calls, 1327 tokens, $0.0582 cost, 11490ms avg latency, memory active with target role), prompt registry table, model routing.
+   241→  - Portfolio: created + published → public page at /p/alex-riveras-portfolio renders with hero + sections.
+   242→  - Branding: LinkedIn optimizer AI generated optimized headline + about + score; Brand Identity tab.
+   243→  - Plans & Billing: Premium plan, usage this cycle (7/2000), 4 plan tiers, invoices.
+   244→  - Resume Insights: AI quality score (72/100, 5 dimensions, quick wins) + version history timeline. Fixed tab-reset-on-score by passing score via callback.
+   245→  - ATS 2.0: competitor comparison (You 15 vs Ideal 75, hidden keywords, edge table); recruiter sim button.
+   246→  - Job CRM: Companies tab — web-search researched "Linear" (real valuation/employee intelligence); Contacts + Reminders tabs.
+   247→  - Admin: audit logs + feature flags + AI cost monitoring added.
+   248→- Responsive verified (390px mobile viewport). Theme + RTL preserved from Phase 1.
+   249→- Final: lint clean, zero browser errors, server alive (HTTP 200).
+   250→
+   251→Stage Summary:
+   252→- CareerOS AI Phase 2 enterprise upgrade COMPLETE and browser-verified.
+   253→- 15 modules, unified by Career Profile + AI orchestration (memory + prompt registry + model routing + usage tracking).
+   254→- New: Career Profile, Portfolio, Branding, Career Intelligence, AI Center, Plans, Onboarding, Command Palette.
+   255→- Upgraded: Resume (scoring/versions/6 career modes), ATS 2.0 (recruiter sim + competitor), Interview Pro (voice TTS+ASR), Job CRM (web-search company research + contacts + reminders), Admin (audit/flags/cost).
+   256→- PWA manifest added.
+   257→
+   258→---
+   259→Task ID: P3-1..5 (Core intelligence + UX)
+   260→Agent: main (Z.ai Code)
+   261→Task: Phase 3 foundation — schema, AI agents, knowledge graph, automation engine, floating assistant.
+   262→
+   263→Work Log:
+   264→- Extended Prisma schema with 13 new models: AgentRun, GraphNode, GraphEdge, WorkflowRun, NetworkProfile, Connection, Post, Mentor, Booking, JobMarketInsight, Tenant, Department, Employee, Document. Added tenantId to User. Pushed to DB (fixed 2 relation mismatches).
+   265→- Extended store.ts with 7 new ModuleIds (agents, graph, network, mentors, market, documents, enterprise).
+   266→- Added i18n keys (EN+AR) for all 7 new modules + run/follow/book/upload/parse/matchScore actions.
+   267→- Added 7 prompts to registry: agent_career, agent_resume, agent_job, agent_interview, agent_learning, job_market, job_match.
+   268→- Built Career Knowledge Graph: src/lib/graph.ts builds nodes+edges (experience, skills, projects, education, certs, goals, jobs, companies, interviews, achievements) from all user data; persists + loads. API: /api/graph GET (auto-builds if empty) + POST (rebuild).
+   269→- Built AI Agent Ecosystem: src/lib/agents.ts — 5 agents (career/resume/job/interview/learning) share one career memory (profile + resumes + jobs + interviews + skill gaps + graph summary). runAgent() calls orchestrated gateway, persists AgentRun with summary/actions/insights. API: /api/agents GET (history+defs) + POST (run agent).
+   270→- Built Automation Engine: src/lib/automation.ts — 4 workflows (new_job_application, new_skill, profile_updated, weekly_review) each chaining steps (company_research→customize_resume→cover_letter→interview_prep→create_reminder, etc.). executeWorkflow() runs steps sequentially, persists WorkflowRun. API: /api/automation GET (registry+history) + POST (execute).
+   271→- Built Graph module (radial SVG visualization: goal at center, rings by kind, click to explore connections, stats sidebar, rebuild button).
+   272→- Built Agents module (5 agent cards with run buttons, action cards with priority + "Open module" links, insights, run history sidebar).
+   273→- Built Automation module (4 workflow cards with step chips, step-by-step run detail with status, run history sidebar).
+   274→- Built Floating AI Assistant (global floating button → panel, context-aware: knows current module + profile, quick actions, markdown replies). API: /api/assistant POST (uses coach prompt + context).
+   275→
+   276→Stage Summary:
+   277→- Core intelligence layer complete: agents + graph + automation + floating assistant. All profile-aware via orchestration gateway.
+   278→- Next: dispatch 5 parallel subagents for Network, Mentors, Document AI, Job Market, Enterprise modules.
+   279→- IMPORTANT for subagents: orchestrated AI via `import { run } from '@/lib/ai'` → `run(promptKey, userId, userName, caller, { json:true })`. Profile via `useProfile()` client hook. Shared types in src/lib/types.ts. Web-search via `zai.functions.invoke('web_search', {query, num})`. VLM via `zai.chat.completions.createVision({messages})`. Existing module patterns in src/components/modules/*. Do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — only create your module file + API routes. ModuleIds already added: network, mentors, market, documents, enterprise.
+   280→
+   281→---
+   282→Task ID: P3-6e
+   283→Agent: full-stack-developer (Enterprise)
+   284→Task: Build Enterprise Edition module + API (company tenants, employees, skill analytics, mobility).
+   285→
+   286→Work Log:
+   287→- Read worklog + 8 reference files (admin.tsx for KPI+recharts pattern, module-header.tsx, server.ts for getCurrentUser/err/parseJson, api-client.ts, schema.prisma for Tenant/Department/Employee models, store.ts for 'enterprise' ModuleId, i18n.ts for enterpriseTitle/enterpriseSub keys, app-provider.tsx for useApp()).
+   288→- Built `/api/enterprise` GET: resolves current user's tenant via `user.tenantId`; if missing, creates "Acme Corp" demo tenant (type=company, plan=enterprise, seats=50, domain=acme.com) + 3 departments (Engineering/Product/Design) + 8 seed employees with realistic names/emails/roles/levels/skills/goals/growthScores (Sarah Chen 88, Elena Rodriguez 92, James Park 85, etc.); assigns user to tenant + bumps plan to enterprise; returns `{ tenant, departments, employees, stats }` with stats = {totalEmployees, totalDepartments, avgGrowth, topSkill}. Idempotent: only seeds when no tenant, then re-fetches with include.
+   289→- Built `/api/enterprise/employees` GET (list with departmentName resolved via Map) + POST (validates name+email required, validates departmentId belongs to tenant, clamps growthScore 0-100, bumps department headcount on insert).
+   290→- Built `/api/enterprise/analytics` GET: aggregates topSkills (top 10 by count), growthDistribution (4 buckets 0-25/26-50/51-75/76-100), departmentHeadcount (from employees), levelDistribution (Junior/Mid/Senior/Staff/Lead ordered), mobilityCandidates (per-employee best match against 4 internal open roles — Staff Eng/Eng Manager/Lead PM/Design Lead — where dept matches + employee level < target level; readinessScore = 0.4*growthScore + 0.6*skillMatchPct; keeps readiness >= 50, sorted desc, top 6).
+   291→- Built `enterprise.tsx` module with ModuleHeader (Building2 icon, t('enterpriseTitle')/t('enterpriseSub')) + 4 tabs:
+   292→  - Overview: gradient tenant info card (name/domain/type badge + plan/seats/joined footer), 4 KPI cards (Total Employees / Departments / Avg Growth / Top Skill), department breakdown grid with per-dept progress bars.
+   293→  - Employees: scrollable Table (name/email/role/dept badge/level badge/growth progress/skill chips top-3+overflow). "Add Employee" button → Dialog form (name/email/role/department Select/level Select/skills+goals comma-separated). Row click → Employee Detail Dialog with SVG growth-score ring, skills chips, goals list, deterministic "Suggested Growth Plan" (next move / focus skills / timeline / stretch goal) computed from level + department.
+   294→  - Skill Analytics: horizontal BarChart of top skills, PieChart of level distribution with legend, BarChart of department headcount with per-dept colored cells. All recharts, same oklch palette + TOOLTIP_STYLE as admin.tsx.
+   295→  - Internal Mobility: grid of candidate cards with name/dept/current role/readiness score (color-coded brand/amber/muted), suggested next role callout, growth progress, matched skills chips. Click → opens same Employee Detail Dialog.
+   296→- Lint: clean (zero errors/warnings on all 4 files). db:push: ✅ already in sync (Tenant/Department/Employee tables + tenantId column exist). Wrote agent-ctx/P3-6e-full-stack-developer.md.
+   297→
+   298→Stage Summary:
+   299→- Files created (only these four):
+   300→  - `src/app/api/enterprise/route.ts` — GET demo-tenant seeder + stats aggregator (idempotent, returns tenant/departments/employees/stats).
+   301→  - `src/app/api/enterprise/employees/route.ts` — GET list (with departmentName) + POST add (validates, bumps headcount).
+   302→  - `src/app/api/enterprise/analytics/route.ts` — GET aggregate (top skills, growth dist, dept headcount, level dist, mobility candidates with readiness scores).
+   303→  - `src/components/modules/enterprise.tsx` — 'use client' module: 4 tabs (Overview/Employees/Skill Analytics/Internal Mobility), Add Employee dialog, Employee Detail dialog with growth-plan generator, recharts visualizations, framer-motion entrance, emerald accent matching existing modules.
+   304→- Key decisions:
+   305→  - Mobility matching uses an internal OPEN_ROLES registry (4 senior roles) rather than coupling to the per-user Job table — keeps the analytics endpoint self-contained.
+   306→  - Readiness score = 0.4*growthScore + 0.6*skillMatchPct — weights demonstrated skill proficiency above the heuristic growth score.
+   307→  - Employee Detail Dialog uses a deterministic client-side growth-plan generator (level-based next move + timeline + dept-specific senior-skill gaps) — no AI round-trip needed for a simple structured suggestion.
+   308→  - Dialog (not Drawer) for employee detail — matches the rest of the app's centered-card pattern.
+   309→  - Do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — module + API only. Wire-up (sidebar entry + page.tsx render) deferred to main agent; `ModuleId 'enterprise'` + `enterpriseTitle`/`enterpriseSub` i18n keys already exist.
+   310→
+   311→---
+   312→Task ID: P3-6d
+   313→Agent: full-stack-developer (Job Market)
+   314→Task: Build Global Job Market Intelligence module + API (web-search + AI matching).
+   315→
+   316→Work Log:
+   317→- Read worklog + 8 reference files (skills.tsx for AI-JSON render pattern, ats.tsx for score ring pattern, module-header.tsx, ai.ts `run()` orchestrator, prompts.ts `job_market` + `job_match` defs, server.ts `getCurrentUser`/`err`/`parseJson`, api-client.ts, profile-context.tsx `useProfile` with targetRole/location/experienceYears, schema.prisma `JobMarketInsight {id,userId,query,data(JSON),createdAt}`, store.ts ModuleId 'market', i18n.ts marketTitle/marketSub/matchScore keys, companies/route.ts for `zai.functions.invoke('web_search', {query, num})` reference).
+   318→- Built `/api/market/route.ts`:
+   319→  - GET: lists the current user's saved JobMarketInsights (most recent first, take 30) with parsed `data` JSON.
+   320→  - POST: accepts {role, location}; runs 3 parallel web searches (`"{role} {where} salary trends 2024 2025 demand"`, `"{role} skills in demand"`, `"{role} job market outlook"`, each `num:8`) via `zai.functions.invoke('web_search', ...)`. Dedupes by URL, caps at 18 hits, concatenates numbered `(n) title\nsnippet` blocks into a single user message. Calls `run<MarketInsightData>('job_market', userId, userName, [{role:'user', content: userMsg}], {json:true})` with the spec's exact JSON contract (salaryInsights, skillDemand[], industryTrends[], predictions[], topCompanies[], marketOutlook, recommendation). Persists a `JobMarketInsight` row tied to `userId` and returns `{ insight, searchResults }`. Defensive: web-search wrapped in try/catch — falls back to "no live web results" string so AI still runs.
+   321→- Built `/api/market/match/route.ts`:
+   322→  - POST: accepts {role, company, jobDescription}. Builds candidate context from `db.careerProfile.findUnique` (targetRole/industry/seniority/experienceYears/targetSalary/location/workMode/brandStatement/strengths[]/values[]/careerGoals) + most-recently-updated resume (parsed: summary, skills, top 6 experience entries with bullets, education, certifications). Calls `run<JobMatch>('job_match', userId, userName, [{role:'user', content: userMsg}], {json:true})` with the spec's exact JSON contract (matchScore 0-100, probabilityOfSuccess 0-100, strengths[], gaps[], requiredImprovements[{area,action,priority}], verdict, advice). Best-effort `aiUsage` row. Returns `{ match }`.
+   323→- Built `market.tsx` module ('use client'):
+   324→  - ModuleHeader with `t('marketTitle')` / `t('marketSub')` and TrendingUp icon.
+   325→  - Tabs: "Market Intelligence" | "Job Match".
+   326→  - IntelTab: input card (role + location prefilled from useProfile on mount; "Analyze Market" button with loading state). Results render via `InsightResults`:
+   327→    - Market outlook banner (gradient, Lightbulb icon, query).
+   328→    - Salary insights card: TrendBadge (rising/stable/falling with TrendingUp/Minus/TrendingDown), 3 salary pills (entry/mid/senior, mid highlighted).
+   329→    - Salary range card: recharts BarChart (3 colored bars, $k axis formatter, custom tooltip showing raw salary string).
+   330→    - Skill demand table (skill + DemandBadge colored by level + trend).
+   331→    - Industry trends bulleted list.
+   332→    - Predictions cards (2-col, topic + timeframe badge + prediction).
+   333→    - Top companies hiring (Briefcase icon, Hiring/Slow badge, note).
+   334→    - Recommendation banner (gradient, Award icon).
+   335→    - Live sources list (scrollable, clickable external links with favicon host).
+   336→    - History sidebar (xl:sticky, ScrollArea max-h-96, click loads past insight).
+   337→  - MatchTab: input card (role + company + JD textarea; "Calculate Match" button). Results:
+   338→    - Score hero card: animated SVG ScoreRing (oklch color by score threshold) + probability-of-success big number + animated width bar + verdict.
+   339→    - Strengths card (emerald check bullets) + Gaps card (amber ! bullets).
+   340→    - Required improvements table (priority badge colored high/medium/low + area + action).
+   341→    - Advice banner (gradient, Lightbulb icon).
+   342→  - Sub-components: ScoreRing (ats.tsx pattern), TrendBadge, DemandBadge, SalaryPill, parseSalaryK helper, SalaryChart with recharts.
+   343→  - Premium styling: emerald accent (bg-brand text-brand-foreground rounded-full buttons), bg-brand-soft/40 tints on score panels, framer-motion entrance, RTL-safe border-e + ScrollArea pe-2, responsive 1→2 col layouts, mobile-first.
+   344→  - Inline `.then()` mount effect for history load (no `useCallback`+`useEffect(()=>{load()},[load])`) — satisfies `react-hooks/set-state-in-effect` lint rule (same pattern as branding.tsx + jobs.tsx).
+   345→- Lint: clean (zero errors/warnings on all 3 files). Dev server: healthy (HTTP 200, no errors in dev.log). Wrote /home/z/agent-ctx/P3-6d-full-stack-developer.md.
+   346→
+   347→Stage Summary:
+   348→- Files created (only these three):
+   349→  - `src/app/api/market/route.ts` — GET list + POST generate (3 parallel web_search + `run('job_market', ..., {json:true})` + JobMarketInsight persistence, returns `{insight, searchResults}`).
+   350→  - `src/app/api/market/match/route.ts` — POST job match (builds candidate context from CareerProfile + latest Resume, calls `run('job_match', ..., {json:true})`, returns `{match}`).
+   351→  - `src/components/modules/market.tsx` — 'use client' module: 2 tabs (Market Intelligence with salary insights + recharts salary chart + skill demand table + industry trends + predictions + top companies + outlook + recommendation + live sources + history sidebar; Job Match with score ring + probability + strengths/gaps + required improvements + advice).
+   352→- Key decisions:
+   353→  - Web-search results are passed verbatim as numbered snippet blocks into the AI prompt — keeps the synthesis transparent and lets the model cite real sources.
+   354→  - Salary chart parses `$k` units from string salary values (handles both `"$120k"` and `"$120,000"`) with safe fallbacks for non-numeric strings.
+   355→  - Match endpoint loads the user's most-recent resume + full CareerProfile into one candidate-context block — no manual resume picker required, mirrors the profile-aware pattern of Phase 2 upgrades.
+   356→  - ScoreRing color tone reuses the ATS module's oklch triple (green ≥75, amber ≥50, red <50) for visual consistency across all scored modules.
+   357→  - Do NOT modify store.ts/types.ts/i18n.ts/sidebar.tsx/page.tsx — module + API only. Wire-up (sidebar entry + page.tsx render) deferred to main agent; `ModuleId 'market'` + `marketTitle`/`marketSub`/`matchScore` i18n keys already exist.
+   358→
+   359→---
+   360→Task ID: P3-6a
+   361→Agent: full-stack-developer (Network)
+   362→Task: Build Professional Social Network module + API.
+   363→
+   364→Work Log:
+   365→- Read worklog + jobs.tsx/module-header/server/api-client/profile-context/schema/store/i18n to anchor on existing patterns.
+   366→- Built `src/app/api/network/route.ts`: GET returns the current user's NetworkProfile (auto-created with slug from name if missing), a feed of recent posts from all users, and suggested professionals to follow. POST creates a post (type, title?, content, tags). Lazily seeds 4 synthetic professionals (Sarah Chen, Marcus Webb, Priya Nair, Diego Alvarez) with bios/tags + 8 seed posts so Discover & Feed have content in single-tenant demo.
+   367→- Built `src/app/api/network/[slug]/route.ts`: GET public profile by slug (with their posts + follower/following counts; 404 if private), PUT updates own profile (verifies slug ownership; bio, headline, tags, visibility).
+   368→- Built `src/app/api/network/follow/route.ts`: POST `{ followeeId }` toggles follow/unfollow — creates/deletes Connection row and increments/decrements followers/following counters on both NetworkProfile rows. Returns `{ following, followers }`.
+   369→- Built `src/components/modules/network.tsx`: 'use client' `NetworkModule` with ModuleHeader (Users icon, t('networkTitle')/t('networkSub'), live follower/following pill). Tabs: Feed (compose box with type selector + tag chip input + post cards with author avatar, type badge, content, hashtags, like/comment counts + sticky profile snapshot sidebar), My Profile (header card with avatar/visibility badge/counts, edit form for headline/bio/tags/visibility switch, own posts list, tips sidebar), Discover (responsive grid of suggested professional cards with avatar, name, headline, bio, tags, follower/following counts, follow/unfollow button). Uses existing shadcn (Card/Button/Input/Textarea/Label/Badge/Tabs/Switch/Avatar) + framer-motion entrance + emerald accent + glass cards.
+   370→- Verified all 4 routes end-to-end via Caddy gateway: GET returned profile+8 posts+4 suggested; POST created a post with author info; follow toggle returned `{following:true, followers:710}`; PUT updated bio/headline/tags with `following:1` reflecting the follow. `bun run lint` → 0 errors.
+   371→
+   372→Stage Summary:
+   373→- Files created (4, no other files modified per constraints):
+   374→  - `src/app/api/network/route.ts`
+   375→  - `src/app/api/network/[slug]/route.ts`
+   376→  - `src/app/api/network/follow/route.ts`
+   377→  - `src/components/modules/network.tsx`
+   378→- Synthetic seed is idempotent: checks User.findUnique(email) + Post.count() before inserting, so re-runs are safe.
+   379→- Decisions: synthetic pros are real DB rows (User + NetworkProfile + Posts) so follow/feed work end-to-end rather than mock-only; slugs slugify(name) with numeric suffix fallback for uniqueness; types declared locally in the module (network owns its shape, types.ts untouched); post types `post|achievement|question|opportunity` each with own lucide icon + badge color (no indigo/blue).
+   380→- The `NetworkModule` is exported but NOT yet wired into page.tsx/sidebar (per task constraints). Downstream integrator should add `{active === 'network' && <NetworkModule />}` to page.tsx and a sidebar entry for ModuleId 'network' (already in store.ts).
+   381→
+   382→---
+   383→Task ID: P3-6c
+   384→Agent: full-stack-developer (Document AI)
+   385→Task: Build Document AI module + API (VLM OCR parsing + profile auto-build).
+   386→
+   387→Work Log:
+   388→- Read worklog + reference files (ats.tsx, module-header.tsx, ai.ts, server.ts, api-client.ts, profile-context.tsx, schema.prisma Document model, store.ts, i18n.ts) to internalize existing patterns.
+   389→- Created `src/app/api/documents/route.ts` — GET lists user's documents (excludes heavy base64 `data` field via Prisma `select`); POST accepts `{filename, mimeType, base64, type}`, persists row with status=pending, runs ZAI `createVision` VLM with resume/certificate-specific prompts, parses JSON response (code-fence stripping + regex fallback), updates row with parsed JSON + status=parsed; on VLM failure marks status=error and returns the error in the body.
+   390→- Created `src/app/api/documents/[id]/route.ts` — GET returns single doc (with base64 for download), DELETE removes it (ownership-checked).
+   391→- Created `src/app/api/documents/[id]/apply/route.ts` — POST merges skills into CareerProfile.strengths (deduped, capped 24), sets targetRole from first experience title (only if empty), backfills brandStatement/location/linkedin/portfolio (only empty fields), creates a new Resume in the Resume Engine with data=JSON.stringify(parsed), writes auditLog, returns {resume, profile, applied:{skillsAdded, targetRole}}.
+   392→- Created `src/components/modules/documents.tsx` — 'use client' module: ModuleHeader with FileScan icon + t('documentsTitle')/t('documentsSub'); drag-drop upload zone (dashed Card + hidden input accept image/pdf); auto-detects type from filename; FileReader.readAsDataURL → POST /api/documents; parsing spinner; document list with type/status badges + auto-summary ("5 experiences · 12 skills detected"); click parsed resume → right-side preview panel (identity card, summary, stat tiles, experience preview, skill chips, certs, projects, Apply button); certificate preview variant; empty state with glowing illustration; emerald accent + framer-motion + sticky preview panel on lg+; uses Card/Button/Badge/ScrollArea/Spinner from shadcn/ui + useApp/useToast/useProfile.
+   393→- Ran `bun run db:push` to regenerate Prisma client with Document model.
+   394→- Restarted dev server (cached singleton had stale client without Document model) so new routes respond correctly.
+   395→- Verified end-to-end with a synthetic PIL-generated resume PNG: POST returned parsed {contact, summary, experience[], education[], skills[7], projects[], certifications[]} in ~5.7s; apply endpoint added 7 skills + created new "Senior Engineer — imported" resume; DELETE cleaned up.
+   396→- Verified lint passes for all four files; no existing files modified.
+   397→
+   398→Stage Summary:
+   399→- Files created (4):
+   400→  - `src/app/api/documents/route.ts` (GET list + POST upload+VLM parse)
+
+[showing lines 1-400 of 701; use offset=401 with limit to continue reading]

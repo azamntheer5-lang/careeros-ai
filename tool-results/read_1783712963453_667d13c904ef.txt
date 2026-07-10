@@ -1,0 +1,839 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useMemo } from 'react'
+     4→import { motion } from 'framer-motion'
+     5→import {
+     6→  BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell,
+     7→} from 'recharts'
+     8→import { api } from '@/lib/api-client'
+     9→import { useApp } from '@/components/app-provider'
+    10→import { useProfile } from '@/components/careeros/profile-context'
+    11→import { useToast } from '@/hooks/use-toast'
+    12→import { ModuleHeader } from '@/components/careeros/module-header'
+    13→import { Spinner } from '@/components/careeros/loading'
+    14→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    15→import { Button } from '@/components/ui/button'
+    16→import { Input } from '@/components/ui/input'
+    17→import { Textarea } from '@/components/ui/textarea'
+    18→import { Label } from '@/components/ui/label'
+    19→import { Badge } from '@/components/ui/badge'
+    20→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    21→import { ScrollArea } from '@/components/ui/scroll-area'
+    22→import {
+    23→  TrendingUp, TrendingDown, Minus, Sparkles, Search, Target,
+    24→  DollarSign, Brain, Building2, Lightbulb, Compass, CheckCircle2,
+    25→  AlertTriangle, ArrowRight, Clock, ExternalLink, History, Briefcase,
+    26→  Award, Gauge,
+    27→} from 'lucide-react'
+    28→
+    29→// ---------------------------------------------------------------------------
+    30→// Types
+    31→// ---------------------------------------------------------------------------
+    32→
+    33→type SearchHit = { title: string; url: string; snippet: string; host: string }
+    34→
+    35→type SalaryInsights = {
+    36→  entry: string
+    37→  mid: string
+    38→  senior: string
+    39→  trend: 'rising' | 'stable' | 'falling'
+    40→  growth: string
+    41→}
+    42→
+    43→type SkillDemand = {
+    44→  skill: string
+    45→  demand: 'very high' | 'high' | 'medium' | 'low'
+    46→  trend: string
+    47→}
+    48→
+    49→type Prediction = { topic: string; prediction: string; timeframe: string }
+    50→type TopCompany = { name: string; hiring: boolean; note: string }
+    51→
+    52→type MarketInsightData = {
+    53→  salaryInsights: SalaryInsights
+    54→  skillDemand: SkillDemand[]
+    55→  industryTrends: string[]
+    56→  predictions: Prediction[]
+    57→  topCompanies: TopCompany[]
+    58→  marketOutlook: string
+    59→  recommendation: string
+    60→}
+    61→
+    62→type SavedInsight = {
+    63→  id: string
+    64→  query: string
+    65→  data: MarketInsightData
+    66→  createdAt: string
+    67→}
+    68→
+    69→type JobMatch = {
+    70→  matchScore: number
+    71→  probabilityOfSuccess: number
+    72→  strengths: string[]
+    73→  gaps: string[]
+    74→  requiredImprovements: { area: string; action: string; priority: 'high' | 'medium' | 'low' }[]
+    75→  verdict: string
+    76→  advice: string
+    77→}
+    78→
+    79→// ---------------------------------------------------------------------------
+    80→// Module
+    81→// ---------------------------------------------------------------------------
+    82→
+    83→export function MarketModule() {
+    84→  const { t } = useApp()
+    85→  const { profile } = useProfile()
+    86→
+    87→  return (
+    88→    <div>
+    89→      <ModuleHeader title={t('marketTitle')} subtitle={t('marketSub')} icon={TrendingUp} />
+    90→      <Tabs defaultValue="intel" className="w-full">
+    91→        <TabsList className="rounded-full p-1 bg-muted/60">
+    92→          <TabsTrigger value="intel" className="rounded-full">
+    93→            <Compass className="h-3.5 w-3.5 me-1.5" /> Market Intelligence
+    94→          </TabsTrigger>
+    95→          <TabsTrigger value="match" className="rounded-full">
+    96→            <Target className="h-3.5 w-3.5 me-1.5" /> Job Match
+    97→          </TabsTrigger>
+    98→        </TabsList>
+    99→        <TabsContent value="intel" className="mt-4">
+   100→          <IntelTab
+   101→            defaultRole={profile?.targetRole || ''}
+   102→            defaultLocation={profile?.location || ''}
+   103→          />
+   104→        </TabsContent>
+   105→        <TabsContent value="match" className="mt-4">
+   106→          <MatchTab defaultRole={profile?.targetRole || ''} />
+   107→        </TabsContent>
+   108→      </Tabs>
+   109→    </div>
+   110→  )
+   111→}
+   112→
+   113→// ---------------------------------------------------------------------------
+   114→// Tab 1 — Market Intelligence
+   115→// ---------------------------------------------------------------------------
+   116→
+   117→function IntelTab({ defaultRole, defaultLocation }: { defaultRole: string; defaultLocation: string }) {
+   118→  const { t } = useApp()
+   119→  const { toast } = useToast()
+   120→  const [role, setRole] = useState(defaultRole || 'Software Engineer')
+   121→  const [location, setLocation] = useState(defaultLocation || 'United States')
+   122→  const [busy, setBusy] = useState(false)
+   123→  const [insight, setInsight] = useState<SavedInsight | null>(null)
+   124→  const [searchResults, setSearchResults] = useState<SearchHit[]>([])
+   125→  const [history, setHistory] = useState<SavedInsight[]>([])
+   126→
+   127→  // Keep the inputs in sync once the profile lands.
+   128→  useEffect(() => {
+   129→    if (defaultRole) setRole((r) => (r ? r : defaultRole))
+   130→  }, [defaultRole])
+   131→  useEffect(() => {
+   132→    if (defaultLocation) setLocation((l) => (l ? l : defaultLocation))
+   133→  }, [defaultLocation])
+   134→
+   135→  // Load saved insights for the sidebar.
+   136→  useEffect(() => {
+   137→    api<{ insights: SavedInsight[] }>('/api/market')
+   138→      .then(({ insights }) => setHistory(insights))
+   139→      .catch(() => {})
+   140→  }, [])
+   141→
+   142→  const analyze = async () => {
+   143→    if (!role.trim()) {
+   144→      toast({ title: 'Role required', description: 'Enter a role to analyze.', variant: 'destructive' })
+   145→      return
+   146→    }
+   147→    setBusy(true); setInsight(null); setSearchResults([])
+   148→    try {
+   149→      const res = await api<{ insight: SavedInsight; searchResults: SearchHit[] }>('/api/market', {
+   150→        method: 'POST', body: { role: role.trim(), location: location.trim() },
+   151→      })
+   152→      setInsight(res.insight)
+   153→      setSearchResults(res.searchResults || [])
+   154→      setHistory((h) => [res.insight, ...h.filter((x) => x.id !== res.insight.id)].slice(0, 30))
+   155→    } catch (e) {
+   156→      toast({ title: 'Analysis failed', description: (e as Error).message, variant: 'destructive' })
+   157→    } finally { setBusy(false) }
+   158→  }
+   159→
+   160→  const loadHistory = (item: SavedInsight) => {
+   161→    setInsight(item)
+   162→    setSearchResults([])
+   163→  }
+   164→
+   165→  return (
+   166→    <div className="grid grid-cols-1 xl:grid-cols-[1fr_280px] gap-4">
+   167→      {/* Main column */}
+   168→      <div className="space-y-4">
+   169→        {/* Input card */}
+   170→        <Card>
+   171→          <CardContent className="p-4">
+   172→            <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+   173→              <div>
+   174→                <Label className="text-xs text-muted-foreground">{t('targetRole') || 'Role'}</Label>
+   175→                <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Senior Product Designer" className="mt-1" />
+   176→              </div>
+   177→              <div>
+   178→                <Label className="text-xs text-muted-foreground">Location</Label>
+   179→                <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. London, Remote, Global" className="mt-1" />
+   180→              </div>
+   181→              <Button onClick={analyze} disabled={busy} className="bg-brand text-brand-foreground hover:bg-brand/90 rounded-full h-10">
+   182→                {busy ? <><Spinner /> Analyzing…</> : <><Sparkles className="h-4 w-4" /> Analyze Market</>}
+   183→              </Button>
+   184→            </div>
+   185→          </CardContent>
+   186→        </Card>
+   187→
+   188→        {/* Loading state */}
+   189→        {busy && (
+   190→          <Card>
+   191→            <CardContent className="p-8 flex flex-col items-center gap-3">
+   192→              <div className="relative">
+   193→                <div className="h-12 w-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
+   194→              </div>
+   195→              <p className="text-sm text-muted-foreground">Searching the live web and synthesizing market signals…</p>
+   196→            </CardContent>
+   197→          </Card>
+   198→        )}
+   199→
+   200→        {/* Results */}
+   201→        {!busy && insight && (
+   202→          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+   203→            <InsightResults insight={insight} searchResults={searchResults} />
+   204→          </motion.div>
+   205→        )}
+   206→
+   207→        {/* Empty state */}
+   208→        {!busy && !insight && (
+   209→          <Card>
+   210→            <CardContent className="p-10 flex flex-col items-center gap-3 text-center">
+   211→              <div className="h-14 w-14 rounded-2xl bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/20">
+   212→                <TrendingUp className="h-7 w-7" />
+   213→              </div>
+   214→              <h3 className="text-base font-semibold">Real-time market intelligence</h3>
+   215→              <p className="text-sm text-muted-foreground max-w-md">
+   216→                Enter a role and location to surface live salary trends, in-demand skills, industry shifts, predictions and top hiring companies.
+   217→              </p>
+   218→            </CardContent>
+   219→          </Card>
+   220→        )}
+   221→      </div>
+   222→
+   223→      {/* History sidebar */}
+   224→      <Card className="h-fit xl:sticky xl:top-4">
+   225→        <CardHeader className="pb-2">
+   226→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   227→            <History className="h-4 w-4 text-brand" /> Past analyses
+   228→          </CardTitle>
+   229→        </CardHeader>
+   230→        <CardContent className="p-0">
+   231→          {history.length === 0 ? (
+   232→            <p className="text-xs text-muted-foreground px-4 pb-4">Your saved market scans appear here.</p>
+   233→          ) : (
+   234→            <ScrollArea className="h-[420px] px-2 pb-2">
+   235→              <div className="space-y-1">
+   236→                {history.map((h) => (
+   237→                  <button
+   238→                    key={h.id}
+   239→                    onClick={() => loadHistory(h)}
+   240→                    className={`w-full text-start rounded-lg border p-2.5 transition hover:border-brand/40 hover:bg-brand-soft/40 ${insight?.id === h.id ? 'border-brand/40 bg-brand-soft/40' : 'border-border'}`}
+   241→                  >
+   242→                    <div className="text-xs font-medium truncate">{h.query}</div>
+   243→                    <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
+   244→                      <Clock className="h-2.5 w-2.5" />
+   245→                      {new Date(h.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+   246→                    </div>
+   247→                  </button>
+   248→                ))}
+   249→              </div>
+   250→            </ScrollArea>
+   251→          )}
+   252→        </CardContent>
+   253→      </Card>
+   254→    </div>
+   255→  )
+   256→}
+   257→
+   258→function InsightResults({ insight, searchResults }: { insight: SavedInsight; searchResults: SearchHit[] }) {
+   259→  const d = insight.data
+   260→  if (!d) return null
+   261→
+   262→  return (
+   263→    <>
+   264→      {/* Market outlook banner */}
+   265→      <Card className="overflow-hidden">
+   266→        <CardContent className="p-0">
+   267→          <div className="flex items-start gap-4 p-5 bg-gradient-to-r from-brand/10 to-transparent">
+   268→            <div className="h-12 w-12 rounded-xl bg-brand text-brand-foreground flex items-center justify-center shrink-0">
+   269→              <Lightbulb className="h-6 w-6" />
+   270→            </div>
+   271→            <div className="min-w-0">
+   272→              <div className="text-xs text-muted-foreground uppercase tracking-wide">Market Outlook · {insight.query}</div>
+   273→              <p className="text-sm mt-1 leading-relaxed">{d.marketOutlook}</p>
+   274→            </div>
+   275→          </div>
+   276→        </CardContent>
+   277→      </Card>
+   278→
+   279→      {/* Salary insights + chart */}
+   280→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   281→        <Card>
+   282→          <CardHeader className="pb-2">
+   283→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   284→              <DollarSign className="h-4 w-4 text-brand" /> Salary Insights
+   285→            </CardTitle>
+   286→          </CardHeader>
+   287→          <CardContent className="space-y-3">
+   288→            <div className="flex items-center gap-2">
+   289→              <TrendBadge trend={d.salaryInsights.trend} />
+   290→              <span className="text-xs text-muted-foreground">{d.salaryInsights.growth}</span>
+   291→            </div>
+   292→            <div className="grid grid-cols-3 gap-2">
+   293→              <SalaryPill label="Entry" value={d.salaryInsights.entry} />
+   294→              <SalaryPill label="Mid" value={d.salaryInsights.mid} highlight />
+   295→              <SalaryPill label="Senior" value={d.salaryInsights.senior} />
+   296→            </div>
+   297→          </CardContent>
+   298→        </Card>
+   299→
+   300→        <Card>
+   301→          <CardHeader className="pb-2">
+   302→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   303→              <Gauge className="h-4 w-4 text-brand" /> Salary Range
+   304→            </CardTitle>
+   305→          </CardHeader>
+   306→          <CardContent>
+   307→            <SalaryChart data={d.salaryInsights} />
+   308→          </CardContent>
+   309→        </Card>
+   310→      </div>
+   311→
+   312→      {/* Skill demand */}
+   313→      <Card>
+   314→        <CardHeader className="pb-2">
+   315→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   316→            <Brain className="h-4 w-4 text-brand" /> Skill Demand
+   317→          </CardTitle>
+   318→        </CardHeader>
+   319→        <CardContent>
+   320→          {d.skillDemand.length === 0 ? (
+   321→            <p className="text-xs text-muted-foreground">No skill data.</p>
+   322→          ) : (
+   323→            <div className="overflow-x-auto">
+   324→              <table className="w-full text-sm">
+   325→                <thead>
+   326→                  <tr className="text-[11px] text-muted-foreground uppercase tracking-wide">
+   327→                    <th className="text-start font-medium pb-2">Skill</th>
+   328→                    <th className="text-start font-medium pb-2">Demand</th>
+   329→                    <th className="text-start font-medium pb-2">Trend</th>
+   330→                  </tr>
+   331→                </thead>
+   332→                <tbody>
+   333→                  {d.skillDemand.map((s, i) => (
+   334→                    <tr key={i} className="border-t">
+   335→                      <td className="py-2.5 font-medium">{s.skill}</td>
+   336→                      <td className="py-2.5"><DemandBadge level={s.demand} /></td>
+   337→                      <td className="py-2.5 text-xs text-muted-foreground">{s.trend}</td>
+   338→                    </tr>
+   339→                  ))}
+   340→                </tbody>
+   341→              </table>
+   342→            </div>
+   343→          )}
+   344→        </CardContent>
+   345→      </Card>
+   346→
+   347→      {/* Industry trends */}
+   348→      <Card>
+   349→        <CardHeader className="pb-2">
+   350→          <CardTitle className="text-sm font-medium flex items-center gap-2">
+   351→            <TrendingUp className="h-4 w-4 text-brand" /> Industry Trends
+   352→          </CardTitle>
+   353→        </CardHeader>
+   354→        <CardContent>
+   355→          <ul className="space-y-2">
+   356→            {d.industryTrends.map((tr, i) => (
+   357→              <li key={i} className="flex items-start gap-2.5 text-sm">
+   358→                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-brand shrink-0" />
+   359→                <span className="text-muted-foreground leading-relaxed">{tr}</span>
+   360→              </li>
+   361→            ))}
+   362→          </ul>
+   363→        </CardContent>
+   364→      </Card>
+   365→
+   366→      {/* Predictions */}
+   367→      {d.predictions.length > 0 && (
+   368→        <Card>
+   369→          <CardHeader className="pb-2">
+   370→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   371→              <Compass className="h-4 w-4 text-brand" /> Predictions
+   372→            </CardTitle>
+   373→          </CardHeader>
+   374→          <CardContent>
+   375→            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   376→              {d.predictions.map((p, i) => (
+   377→                <motion.div
+   378→                  key={i}
+   379→                  initial={{ opacity: 0, y: 8 }}
+   380→                  animate={{ opacity: 1, y: 0 }}
+   381→                  transition={{ delay: i * 0.08 }}
+   382→                  className="rounded-lg border p-3"
+   383→                >
+   384→                  <div className="flex items-center justify-between gap-2 mb-1.5">
+   385→                    <span className="text-sm font-semibold">{p.topic}</span>
+   386→                    <Badge variant="secondary" className="text-[10px]">{p.timeframe}</Badge>
+   387→                  </div>
+   388→                  <p className="text-xs text-muted-foreground leading-relaxed">{p.prediction}</p>
+   389→                </motion.div>
+   390→              ))}
+   391→            </div>
+   392→          </CardContent>
+   393→        </Card>
+   394→      )}
+   395→
+   396→      {/* Top companies + Recommendation */}
+   397→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   398→        {d.topCompanies.length > 0 && (
+   399→          <Card>
+   400→            <CardHeader className="pb-2">
+   401→              <CardTitle className="text-sm font-medium flex items-center gap-2">
+   402→                <Building2 className="h-4 w-4 text-brand" /> Top Companies Hiring
+   403→              </CardTitle>
+   404→            </CardHeader>
+   405→            <CardContent className="space-y-2">
+   406→              {d.topCompanies.map((c, i) => (
+   407→                <div key={i} className="flex items-start gap-2.5 rounded-lg border p-2.5">
+   408→                  <div className="h-8 w-8 rounded-lg bg-brand-soft text-brand flex items-center justify-center shrink-0">
+   409→                    <Briefcase className="h-4 w-4" />
+   410→                  </div>
+   411→                  <div className="flex-1 min-w-0">
+   412→                    <div className="flex items-center gap-2">
+   413→                      <span className="text-sm font-medium">{c.name}</span>
+   414→                      {c.hiring ? (
+   415→                        <Badge className="bg-brand/15 text-brand border-brand/30 hover:bg-brand/20" variant="outline">Hiring</Badge>
+   416→                      ) : (
+   417→                        <Badge variant="outline" className="text-muted-foreground">Slow</Badge>
+   418→                      )}
+   419→                    </div>
+   420→                    <p className="text-xs text-muted-foreground mt-0.5">{c.note}</p>
+   421→                  </div>
+   422→                </div>
+   423→              ))}
+   424→            </CardContent>
+   425→          </Card>
+   426→        )}
+   427→
+   428→        <Card className="overflow-hidden">
+   429→          <CardContent className="p-0">
+   430→            <div className="p-5 bg-gradient-to-br from-brand/10 to-transparent">
+   431→              <div className="flex items-center gap-2 mb-2">
+   432→                <Award className="h-4 w-4 text-brand" />
+   433→                <span className="text-xs text-muted-foreground uppercase tracking-wide">Recommendation</span>
+   434→              </div>
+   435→              <p className="text-sm leading-relaxed">{d.recommendation}</p>
+   436→            </div>
+   437→          </CardContent>
+   438→        </Card>
+   439→      </div>
+   440→
+   441→      {/* Sources */}
+   442→      {searchResults.length > 0 && (
+   443→        <Card>
+   444→          <CardHeader className="pb-2">
+   445→            <CardTitle className="text-sm font-medium flex items-center gap-2">
+   446→              <Search className="h-4 w-4 text-brand" /> Live sources
+   447→            </CardTitle>
+   448→          </CardHeader>
+   449→          <CardContent>
+   450→            <ScrollArea className="max-h-72">
+   451→              <div className="space-y-2 pr-2">
+   452→                {searchResults.map((s, i) => (
+   453→                  <a
+   454→                    key={i}
+   455→                    href={s.url}
+   456→                    target="_blank"
+   457→                    rel="noreferrer"
+   458→                    className="block rounded-lg border p-2.5 hover:border-brand/40 hover:bg-brand-soft/40 transition"
+   459→                  >
+   460→                    <div className="flex items-start justify-between gap-2">
+   461→                      <span className="text-xs font-medium truncate">{s.title}</span>
+   462→                      <ExternalLink className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+   463→                    </div>
+   464→                    <p className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{s.snippet}</p>
+   465→                    <div className="text-[10px] text-brand mt-1">{s.host}</div>
+   466→                  </a>
+   467→                ))}
+   468→              </div>
+   469→            </ScrollArea>
+   470→          </CardContent>
+   471→        </Card>
+   472→      )}
+   473→    </>
+   474→  )
+   475→}
+   476→
+   477→// ---------------------------------------------------------------------------
+   478→// Tab 2 — Job Match
+   479→// ---------------------------------------------------------------------------
+   480→
+   481→function MatchTab({ defaultRole }: { defaultRole: string }) {
+   482→  const { t } = useApp()
+   483→  const { toast } = useToast()
+   484→  const [role, setRole] = useState(defaultRole || 'Senior Software Engineer')
+   485→  const [company, setCompany] = useState('')
+   486→  const [jd, setJd] = useState('')
+   487→  const [busy, setBusy] = useState(false)
+   488→  const [match, setMatch] = useState<JobMatch | null>(null)
+   489→
+   490→  useEffect(() => {
+   491→    if (defaultRole) setRole((r) => (r ? r : defaultRole))
+   492→  }, [defaultRole])
+   493→
+   494→  const calculate = async () => {
+   495→    if (!role.trim() || !jd.trim()) {
+   496→      toast({ title: 'Missing input', description: 'Provide the target role and paste the job description.', variant: 'destructive' })
+   497→      return
+   498→    }
+   499→    setBusy(true); setMatch(null)
+   500→    try {
+   501→      const { match } = await api<{ match: JobMatch }>('/api/market/match', {
+   502→        method: 'POST', body: { role: role.trim(), company: company.trim(), jobDescription: jd.trim() },
+   503→      })
+   504→      setMatch(match)
+   505→    } catch (e) {
+   506→      toast({ title: 'Match failed', description: (e as Error).message, variant: 'destructive' })
+   507→    } finally { setBusy(false) }
+   508→  }
+   509→
+   510→  const matchColor = useMemo(() => {
+   511→    if (!match) return 'var(--brand)'
+   512→    const s = match.matchScore
+   513→    if (s >= 75) return 'oklch(0.7 0.15 162)'
+   514→    if (s >= 50) return 'oklch(0.75 0.15 80)'
+   515→    return 'oklch(0.7 0.16 50)'
+   516→  }, [match])
+   517→
+   518→  return (
+   519→    <div className="space-y-4">
+   520→      {/* Inputs */}
+   521→      <Card>
+   522→        <CardContent className="p-4 space-y-3">
+   523→          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   524→            <div>
+   525→              <Label className="text-xs text-muted-foreground">{t('targetRole') || 'Role'}</Label>
+   526→              <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. Staff Engineer" className="mt-1" />
+   527→            </div>
+   528→            <div>
+   529→              <Label className="text-xs text-muted-foreground">{t('company') || 'Company'}</Label>
+   530→              <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="e.g. Stripe" className="mt-1" />
+   531→            </div>
+   532→          </div>
+   533→          <div>
+   534→            <Label className="text-xs text-muted-foreground">Job description</Label>
+   535→            <Textarea
+   536→              value={jd}
+   537→              onChange={(e) => setJd(e.target.value)}
+   538→              rows={6}
+   539→              placeholder="Paste the full job description — responsibilities, requirements, qualifications…"
+   540→              className="mt-1"
+   541→            />
+   542→          </div>
+   543→          <Button onClick={calculate} disabled={busy} className="w-full sm:w-auto bg-brand text-brand-foreground hover:bg-brand/90 rounded-full">
+   544→            {busy ? <><Spinner /> Calculating match…</> : <><Sparkles className="h-4 w-4" /> Calculate Match</>}
+   545→          </Button>
+   546→        </CardContent>
+   547→      </Card>
+   548→
+   549→      {/* Loading */}
+   550→      {busy && (
+   551→        <Card>
+   552→          <CardContent className="p-8 flex flex-col items-center gap-3">
+   553→            <div className="relative">
+   554→              <div className="h-12 w-12 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
+   555→            </div>
+   556→            <p className="text-sm text-muted-foreground">Loading your profile + latest resume and scoring fit…</p>
+   557→          </CardContent>
+   558→        </Card>
+   559→      )}
+   560→
+   561→      {/* Results */}
+   562→      {!busy && match && (
+   563→        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+   564→          {/* Score hero */}
+   565→          <Card className="overflow-hidden">
+   566→            <CardContent className="p-0">
+   567→              <div className="grid grid-cols-1 md:grid-cols-[200px_1fr]">
+   568→                <div
+   569→                  className="flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-e"
+   570→                  style={{ background: `linear-gradient(135deg, color-mix(in oklch, ${matchColor} 16%, var(--card)), var(--card))` }}
+   571→                >
+   572→                  <ScoreRing score={match.matchScore} color={matchColor} />
+   573→                  <div className="mt-2 text-xs text-muted-foreground">Match Score</div>
+   574→                </div>
+   575→                <div className="p-5">
+   576→                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   577→                    <div>
+   578→                      <div className="text-xs text-muted-foreground mb-1.5">Probability of success</div>
+   579→                      <div className="flex items-center gap-3">
+   580→                        <div className="text-3xl font-bold" style={{ color: matchColor }}>
+   581→                          {match.probabilityOfSuccess}%
+   582→                        </div>
+   583→                      </div>
+   584→                      <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+   585→                        <motion.div
+   586→                          className="h-full rounded-full"
+   587→                          style={{ background: matchColor }}
+   588→                          initial={{ width: 0 }}
+   589→                          animate={{ width: `${match.probabilityOfSuccess}%` }}
+   590→                          transition={{ duration: 0.9, ease: 'easeOut' }}
+   591→                        />
+   592→                      </div>
+   593→                    </div>
+   594→                    <div>
+   595→                      <div className="text-xs text-muted-foreground mb-1.5">Verdict</div>
+   596→                      <p className="text-sm leading-relaxed">{match.verdict}</p>
+   597→                    </div>
+   598→                  </div>
+   599→                </div>
+   600→              </div>
+   601→            </CardContent>
+   602→          </Card>
+   603→
+   604→          {/* Strengths + Gaps */}
+   605→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   606→            <Card>
+   607→              <CardHeader className="pb-2">
+   608→                <CardTitle className="text-sm font-medium flex items-center gap-2">
+   609→                  <CheckCircle2 className="h-4 w-4 text-brand" /> Strengths
+   610→                </CardTitle>
+   611→              </CardHeader>
+   612→              <CardContent>
+   613→                {match.strengths.length === 0 ? (
+   614→                  <p className="text-xs text-muted-foreground">None identified.</p>
+   615→                ) : (
+   616→                  <ul className="space-y-1.5">
+   617→                    {match.strengths.map((s, i) => (
+   618→                      <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+   619→                        <span className="text-brand mt-0.5">✓</span><span>{s}</span>
+   620→                      </li>
+   621→                    ))}
+   622→                  </ul>
+   623→                )}
+   624→              </CardContent>
+   625→            </Card>
+   626→            <Card>
+   627→              <CardHeader className="pb-2">
+   628→                <CardTitle className="text-sm font-medium flex items-center gap-2">
+   629→                  <AlertTriangle className="h-4 w-4 text-amber-500" /> Gaps
+   630→                </CardTitle>
+   631→              </CardHeader>
+   632→              <CardContent>
+   633→                {match.gaps.length === 0 ? (
+   634→                  <p className="text-xs text-muted-foreground">No significant gaps — strong fit.</p>
+   635→                ) : (
+   636→                  <ul className="space-y-1.5">
+   637→                    {match.gaps.map((s, i) => (
+   638→                      <li key={i} className="text-xs text-muted-foreground flex gap-1.5">
+   639→                        <span className="text-amber-500 mt-0.5">!</span><span>{s}</span>
+   640→                      </li>
+   641→                    ))}
+   642→                  </ul>
+   643→                )}
+   644→              </CardContent>
+   645→            </Card>
+   646→          </div>
+   647→
+   648→          {/* Required improvements */}
+   649→          {match.requiredImprovements.length > 0 && (
+   650→            <Card>
+   651→              <CardHeader className="pb-2">
+   652→                <CardTitle className="text-sm font-medium flex items-center gap-2">
+   653→                  <ArrowRight className="h-4 w-4 text-brand" /> Required Improvements
+   654→                </CardTitle>
+   655→              </CardHeader>
+   656→              <CardContent>
+   657→                <div className="space-y-2">
+   658→                  {match.requiredImprovements.map((r, i) => (
+   659→                    <div key={i} className="flex items-start gap-3 rounded-lg border p-3">
+   660→                      <Badge
+   661→                        variant="outline"
+   662→                        className={
+   663→                          r.priority === 'high'
+   664→                            ? 'bg-destructive/15 text-destructive border-destructive/30'
+   665→                            : r.priority === 'medium'
+   666→                            ? 'bg-amber-500/15 text-amber-600 border-amber-500/30'
+   667→                            : 'bg-brand/15 text-brand border-brand/30'
+   668→                        }
+   669→                      >
+   670→                        {r.priority}
+   671→                      </Badge>
+   672→                      <div className="min-w-0">
+   673→                        <div className="text-sm font-medium">{r.area}</div>
+   674→                        <div className="text-xs text-muted-foreground mt-0.5">{r.action}</div>
+   675→                      </div>
+   676→                    </div>
+   677→                  ))}
+   678→                </div>
+   679→              </CardContent>
+   680→            </Card>
+   681→          )}
+   682→
+   683→          {/* Advice */}
+   684→          <Card className="overflow-hidden">
+   685→            <CardContent className="p-0">
+   686→              <div className="p-5 bg-gradient-to-br from-brand/10 to-transparent">
+   687→                <div className="flex items-center gap-2 mb-2">
+   688→                  <Lightbulb className="h-4 w-4 text-brand" />
+   689→                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Advice</span>
+   690→                </div>
+   691→                <p className="text-sm leading-relaxed">{match.advice}</p>
+   692→              </div>
+   693→            </CardContent>
+   694→          </Card>
+   695→        </motion.div>
+   696→      )}
+   697→
+   698→      {/* Empty state */}
+   699→      {!busy && !match && (
+   700→        <Card>
+   701→          <CardContent className="p-10 flex flex-col items-center gap-3 text-center">
+   702→            <div className="h-14 w-14 rounded-2xl bg-brand-soft text-brand flex items-center justify-center ring-1 ring-brand/20">
+   703→              <Target className="h-7 w-7" />
+   704→            </div>
+   705→            <h3 className="text-base font-semibold">AI job match</h3>
+   706→            <p className="text-sm text-muted-foreground max-w-md">
+   707→              Paste a job description and we'll score your fit against your saved profile and latest resume — strengths, gaps and an improvement playbook.
+   708→            </p>
+   709→          </CardContent>
+   710→        </Card>
+   711→      )}
+   712→    </div>
+   713→  )
+   714→}
+   715→
+   716→// ---------------------------------------------------------------------------
+   717→// Sub-components
+   718→// ---------------------------------------------------------------------------
+   719→
+   720→function ScoreRing({ score, color }: { score: number; color: string }) {
+   721→  const r = 34
+   722→  const circ = 2 * Math.PI * r
+   723→  const offset = circ - (Math.min(100, Math.max(0, score)) / 100) * circ
+   724→  return (
+   725→    <div className="relative h-24 w-24">
+   726→      <svg className="h-24 w-24 -rotate-90" viewBox="0 0 80 80">
+   727→        <circle cx="40" cy="40" r={r} fill="none" stroke="var(--muted)" strokeWidth="6" />
+   728→        <motion.circle
+   729→          cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round"
+   730→          strokeDasharray={circ}
+   731→          initial={{ strokeDashoffset: circ }}
+   732→          animate={{ strokeDashoffset: offset }}
+   733→          transition={{ duration: 1, ease: 'easeOut' }}
+   734→        />
+   735→      </svg>
+   736→      <div className="absolute inset-0 flex flex-col items-center justify-center">
+   737→        <span className="text-2xl font-bold" style={{ color }}>{score}</span>
+   738→        <span className="text-[9px] text-muted-foreground uppercase tracking-wide">/ 100</span>
+   739→      </div>
+   740→    </div>
+   741→  )
+   742→}
+   743→
+   744→function TrendBadge({ trend }: { trend: 'rising' | 'stable' | 'falling' }) {
+   745→  const map = {
+   746→    rising: { icon: TrendingUp, color: 'text-brand', label: 'Rising', cls: 'bg-brand/15 text-brand border-brand/30' },
+   747→    stable: { icon: Minus, color: 'text-muted-foreground', label: 'Stable', cls: 'bg-muted text-muted-foreground border-border' },
+   748→    falling: { icon: TrendingDown, color: 'text-destructive', label: 'Falling', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+   749→  } as const
+   750→  const m = map[trend] || map.stable
+   751→  const Icon = m.icon
+   752→  return (
+   753→    <Badge variant="outline" className={m.cls}>
+   754→      <Icon className="h-3 w-3 me-1" /> {m.label}
+   755→    </Badge>
+   756→  )
+   757→}
+   758→
+   759→function DemandBadge({ level }: { level: 'very high' | 'high' | 'medium' | 'low' }) {
+   760→  const map: Record<string, string> = {
+   761→    'very high': 'bg-brand/15 text-brand border-brand/30',
+   762→    'high': 'bg-brand/10 text-brand border-brand/20',
+   763→    'medium': 'bg-amber-500/15 text-amber-600 border-amber-500/30',
+   764→    'low': 'bg-muted text-muted-foreground border-border',
+   765→  }
+   766→  return <Badge variant="outline" className={map[level] || map.medium}>{level}</Badge>
+   767→}
+   768→
+   769→function SalaryPill({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+   770→  return (
+   771→    <div className={`rounded-lg border p-2.5 text-center ${highlight ? 'border-brand/40 bg-brand-soft/40' : ''}`}>
+   772→      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
+   773→      <div className="text-sm font-semibold mt-1 truncate" title={value}>{value}</div>
+   774→    </div>
+   775→  )
+   776→}
+   777→
+   778→/** Parse the first number (e.g. "$120k" → 120) from a salary string, in $k units. */
+   779→function parseSalaryK(s: string): number {
+   780→  if (!s) return 0
+   781→  const m = s.replace(/,/g, '').match(/(\d+(\.\d+)?)/)
+   782→  if (!m) return 0
+   783→  const n = parseFloat(m[1])
+   784→  // If the string contains "k" or value is small (e.g., 120 means $120k), assume $k units.
+   785→  if (/k\b/i.test(s) || n < 1000) return n
+   786→  // Looks like an absolute dollar amount — convert to $k.
+   787→  return Math.round(n / 1000)
+   788→}
+   789→
+   790→function SalaryChart({ data }: { data: SalaryInsights }) {
+   791→  const rows = useMemo(() => {
+   792→    const entry = parseSalaryK(data.entry)
+   793→    const mid = parseSalaryK(data.mid)
+   794→    const senior = parseSalaryK(data.senior)
+   795→    // Fall back to a sensible default if AI returned non-numeric strings.
+   796→    const fallback = entry || mid || senior || 80
+   797→    return [
+   798→      { name: 'Entry', value: entry || fallback, raw: data.entry },
+   799→      { name: 'Mid', value: mid || (entry * 1.4) || fallback, raw: data.mid },
+   800→      { name: 'Senior', value: senior || (mid * 1.6) || fallback, raw: data.senior },
+   801→    ]
+   802→  }, [data])
+   803→
+   804→  const colors = ['oklch(0.65 0.13 200)', 'var(--brand)', 'oklch(0.6 0.16 162)']
+   805→
+   806→  return (
+   807→    <div className="h-[200px] w-full">
+   808→      <ResponsiveContainer width="100%" height="100%">
+   809→        <BarChart data={rows} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
+   810→          <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} axisLine={false} tickLine={false} />
+   811→          <YAxis
+   812→            tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }}
+   813→            axisLine={false}
+   814→            tickLine={false}
+   815→            tickFormatter={(v) => `$${v}k`}
+   816→            width={42}
+   817→          />
+   818→          <Tooltip
+   819→            cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
+   820→            contentStyle={{
+   821→              background: 'var(--card)',
+   822→              border: '1px solid var(--border)',
+   823→              borderRadius: 8,
+   824→              fontSize: 12,
+   825→              color: 'var(--foreground)',
+   826→            }}
+   827→            formatter={(value: any, _name: any, props: any) => [props.payload.raw || `${value}k`, 'Salary']}
+   828→          />
+   829→          <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={64}>
+   830→            {rows.map((_, i) => (
+   831→              <Cell key={i} fill={colors[i % colors.length]} />
+   832→            ))}
+   833→          </Bar>
+   834→        </BarChart>
+   835→      </ResponsiveContainer>
+   836→    </div>
+   837→  )
+   838→}
+   839→

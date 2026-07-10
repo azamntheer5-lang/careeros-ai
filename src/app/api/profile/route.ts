@@ -14,29 +14,32 @@ export async function GET() {
   } catch (e) { return err(e) }
 }
 
-/** UPSERT the career profile. */
+/** UPSERT the career profile. Only updates fields that are explicitly provided. */
 export async function PUT(req: Request) {
   try {
     const user = await getCurrentUser()
     const body = await req.json()
-    const data = {
-      targetRole: body.targetRole ?? null,
-      industry: body.industry ?? null,
-      seniority: body.seniority ?? null,
-      experienceYears: typeof body.experienceYears === 'number' ? body.experienceYears : null,
-      targetSalary: body.targetSalary ?? null,
-      currency: body.currency ?? 'USD',
-      location: body.location ?? null,
-      workMode: body.workMode ?? null,
-      careerGoals: body.careerGoals ?? null,
-      timeline: body.timeline ?? null,
-      linkedinUrl: body.linkedinUrl ?? null,
-      githubUrl: body.githubUrl ?? null,
-      portfolioUrl: body.portfolioUrl ?? null,
-      brandStatement: body.brandStatement ?? null,
-      strengths: body.strengths ? JSON.stringify(body.strengths) : undefined,
-      values: body.values ? JSON.stringify(body.values) : undefined,
-    }
+    // Build update object — only include fields actually present in the body.
+    // Using `undefined` (omitted) instead of `null` prevents wiping existing data
+    // when callers do `save({})` or `save({ onboarded: true })`.
+    const data: Record<string, unknown> = {}
+    if ('targetRole' in body) data.targetRole = body.targetRole ?? null
+    if ('industry' in body) data.industry = body.industry ?? null
+    if ('seniority' in body) data.seniority = body.seniority ?? null
+    if ('experienceYears' in body) data.experienceYears = typeof body.experienceYears === 'number' ? body.experienceYears : null
+    if ('targetSalary' in body) data.targetSalary = body.targetSalary ?? null
+    if ('currency' in body) data.currency = body.currency ?? 'USD'
+    if ('location' in body) data.location = body.location ?? null
+    if ('workMode' in body) data.workMode = body.workMode ?? null
+    if ('careerGoals' in body) data.careerGoals = body.careerGoals ?? null
+    if ('timeline' in body) data.timeline = body.timeline ?? null
+    if ('linkedinUrl' in body) data.linkedinUrl = body.linkedinUrl ?? null
+    if ('githubUrl' in body) data.githubUrl = body.githubUrl ?? null
+    if ('portfolioUrl' in body) data.portfolioUrl = body.portfolioUrl ?? null
+    if ('brandStatement' in body) data.brandStatement = body.brandStatement ?? null
+    if ('strengths' in body) data.strengths = body.strengths ? JSON.stringify(body.strengths) : undefined
+    if ('values' in body) data.values = body.values ? JSON.stringify(body.values) : undefined
+
     const profile = await db.careerProfile.upsert({
       where: { userId: user.id },
       create: { userId: user.id, ...data },

@@ -408,6 +408,7 @@ function FeedTab({ profile, posts, onPosted }: { profile: NetworkProfile; posts:
 function PostCard({ post }: { post: Post }) {
   const meta = postTypeMeta(post.type)
   const Icon = meta.icon
+  const [liked, setLiked] = useState(false)
   return (
     <Card className="bg-card/60 backdrop-blur-sm border-border/70 hover:border-border transition-colors">
       <CardContent className="p-4">
@@ -444,12 +445,18 @@ function PostCard({ post }: { post: Post }) {
             )}
 
             <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-              <button className="inline-flex items-center gap-1 hover:text-brand transition-colors" type="button">
-                <Heart className="h-3.5 w-3.5" /> {post.likes}
+              <button
+                className={`inline-flex items-center gap-1 transition-colors ${liked ? 'text-brand' : 'hover:text-brand'}`}
+                type="button"
+                onClick={() => setLiked((v) => !v)}
+                aria-label={liked ? 'Unlike' : 'Like'}
+                aria-pressed={liked}
+              >
+                <Heart className={`h-3.5 w-3.5 ${liked ? 'fill-current' : ''}`} /> {post.likes + (liked ? 1 : 0)}
               </button>
-              <button className="inline-flex items-center gap-1 hover:text-brand transition-colors" type="button">
+              <span className="inline-flex items-center gap-1" title="Comments are read-only in this feed">
                 <MessageCircle className="h-3.5 w-3.5" /> {post.comments}
-              </button>
+              </span>
             </div>
           </div>
         </div>

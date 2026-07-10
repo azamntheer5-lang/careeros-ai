@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useApp } from '@/components/app-provider'
@@ -39,19 +39,28 @@ export function ResumeModule() {
   const [dirty, setDirty] = useState(false)
   const [showGenerate, setShowGenerate] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = async () => {
     setLoading(true)
-    const { resumes } = await api<{ resumes: any[] }>('/api/resumes')
-    const mapped: ResumeMeta[] = resumes.map((r) => ({
-      ...r,
-      data: normalizeResumeData(typeof r.data === 'string' ? JSON.parse(r.data) : r.data),
-    }))
-    setResumes(mapped)
-    if (!active && mapped.length) setActive(mapped[0])
-    setLoading(false)
-  }, [])
+    try {
+      const { resumes } = await api<{ resumes: any[] }>('/api/resumes')
+      const mapped: ResumeMeta[] = resumes.map((r) => ({
+        ...r,
+        data: normalizeResumeData(typeof r.data === 'string' ? JSON.parse(r.data) : r.data),
+      }))
+      setResumes(mapped)
+      // Only set active if none is selected, or the current one no longer exists
+      setActive((prev) => {
+        if (prev && mapped.some((m) => m.id === prev.id)) return prev
+        return mapped.length ? mapped[0] : null
+      })
+    } catch (e) {
+      toast({ title: 'Failed to load resumes', description: (e as Error).message, variant: 'destructive' })
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load().catch(() => {}) }, [])
 
   const update = (patch: Partial<ResumeMeta>) => {
     if (!active) return

@@ -26,17 +26,17 @@ export function FloatingAssistant() {
   const { profile, user } = useProfile()
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { role: 'assistant', content: "Hi! I'm your CareerOS assistant. I can see you're on the **{module}** module. Ask me anything about your career, or pick a quick action below." },
-  ])
+  const [msgs, setMsgs] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Replace the {module} placeholder with the active module name on change.
+  // Reset conversation when the panel is (re)opened, with a context-aware welcome.
   useEffect(() => {
-    setMsgs((m) => m.map((msg, i) => i === 0 ? { ...msg, content: msg.content.replace(/\{module\}/g, active) } : msg))
-  }, [active])
+    if (open && msgs.length === 0) {
+      setMsgs([{ role: 'assistant', content: `Hi! I'm your CareerOS assistant. I can see you're on the **${active}** module. Ask me anything about your career, or pick a quick action below.` }])
+    }
+  }, [open, active, msgs.length])
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight

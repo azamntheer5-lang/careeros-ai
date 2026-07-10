@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { api } from '@/lib/api-client'
 import { useApp } from '@/components/app-provider'
-import { useAppStore } from '@/lib/store'
 import { useToast } from '@/hooks/use-toast'
 import { ModuleHeader } from '@/components/careeros/module-header'
 import { Spinner } from '@/components/careeros/loading'
@@ -27,7 +26,6 @@ const STEP_LABELS: Record<string, string> = {
 
 export function AutomationModule() {
   const { t } = useApp()
-  const { set: setModule } = useAppStore()
   const { toast } = useToast()
   const [workflows, setWorkflows] = useState<WorkflowDef[]>([])
   const [runs, setRuns] = useState<WorkflowRun[]>([])
