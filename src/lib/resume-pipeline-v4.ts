@@ -55,6 +55,8 @@ export type BilingualResume = {
 export type OptimizedResult = {
   resume: BilingualResume
   evaluation: EvaluationResult
+  keywords: { detected: string[]; suggested: string[]; actionVerbs: string[]; missingActionVerbs: string[] }
+  missingInfo: { field: string; question: string; priority: string; suggestion: string | null }[]
   detectedLanguage: string
   profession: string
   seniority: string
@@ -459,6 +461,8 @@ export async function generateResumeOptimized(
   return {
     resume,
     evaluation,
+    keywords,
+    missingInfo,
     detectedLanguage,
     profession,
     seniority,

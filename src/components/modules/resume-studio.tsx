@@ -25,7 +25,14 @@ import {
 
 type StudioResult = {
   resume: any
-  score: {
+  evaluation?: {
+    overall: number
+    metrics: { name: string; score: number; details: string; passed: boolean }[]
+    hallucinations: string[]
+    missingFields: string[]
+    recommendations: string[]
+  }
+  score?: {
     overall: number
     atsScore: number
     completeness: number
@@ -47,6 +54,9 @@ type StudioResult = {
   enrichmentNotes: string[]
   detectedLanguage: string
   wasEnriched: boolean
+  aiCalls?: number
+  tokensUsed?: number
+  latencyMs?: number
 }
 
 type PipelineStage = 'idle' | 'parsing' | 'enriching' | 'optimizing' | 'scoring' | 'done'
@@ -81,20 +91,21 @@ export function ResumeStudioModule() {
     setResult(null)
     setStage('parsing')
 
-    // Animate through stages
-    setTimeout(() => setStage('enriching'), 1500)
-    setTimeout(() => setStage('optimizing'), 3000)
-    setTimeout(() => setStage('scoring'), 4500)
+    // Animate through stages — slower to match actual AI latency
+    setTimeout(() => setStage('enriching'), 5000)
+    setTimeout(() => setStage('optimizing'), 15000)
+    setTimeout(() => setStage('scoring'), 30000)
 
     try {
       const res = await api<StudioResult>('/api/desktop/generate-resume-v2', {
         method: 'POST',
-        body: { rawText, jobDescription: jobDescription || undefined, enrich: true, optimizeATS: !!jobDescription.trim() },
+        body: { rawText, jobDescription: jobDescription || undefined, runQualityCheck: false },
       })
       setResult(res)
       setStage('done')
       setActiveTab('preview')
-      toast({ title: 'Resume generated! 🎉', description: `Overall score: ${res.score.overall}/100` })
+      const overall = res.evaluation?.overall ?? res.score?.overall ?? 0
+      toast({ title: 'Resume generated! 🎉', description: `Overall score: ${overall}/100 — ${res.aiCalls ?? 1} AI call, ${res.latencyMs ?? 0}ms` })
     } catch (e) {
       toast({ title: 'Generation failed', description: (e as Error).message, variant: 'destructive' })
       setStage('idle')
@@ -403,19 +414,34 @@ export function ResumeStudioModule() {
 
               {/* ─── Score Tab ─── */}
               <TabsContent value="score" className="space-y-4">
+                {(() => {
+                  // Normalize: V4 returns evaluation.metrics, V3 returns score.dimensions
+                  const overall = result.evaluation?.overall ?? result.score?.overall ?? 0
+                  const metrics = result.evaluation?.metrics ?? []
+                  const getMetric = (name: string) => metrics.find(m => m.name === name)?.score ?? 0
+                  const atsScore = result.score?.atsScore ?? getMetric('ATS Keyword Coverage')
+                  const completeness = result.score?.completeness ?? getMetric('Section Completeness')
+                  const keywordScore = result.score?.keywordScore ?? getMetric('ATS Keyword Coverage')
+                  const formattingScore = result.score?.formattingScore ?? getMetric('Formatting')
+                  const dimensions = result.score?.dimensions ?? metrics.map(m => ({ name: m.name, score: m.score, status: m.passed ? 'good' : 'bad' }))
+                  const quickWins = result.score?.quickWins ?? result.evaluation?.recommendations ?? []
+                  const missingCritical = result.score?.missingCritical ?? result.evaluation?.missingFields ?? []
+
+                  return (
+                    <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <ScoreCard label="Overall" value={result.score.overall} color={scoreColor(result.score.overall)} icon={Award} />
-                  <ScoreCard label="ATS Score" value={result.score.atsScore} color={scoreColor(result.score.atsScore)} icon={Target} />
-                  <ScoreCard label="Completeness" value={result.score.completeness} color={scoreColor(result.score.completeness)} icon={CheckCircle2} />
-                  <ScoreCard label="Keywords" value={result.score.keywordScore} color={scoreColor(result.score.keywordScore)} icon={Zap} />
-                  <ScoreCard label="Formatting" value={result.score.formattingScore} color={scoreColor(result.score.formattingScore)} icon={FileText} />
+                  <ScoreCard label="Overall" value={overall} color={scoreColor(overall)} icon={Award} />
+                  <ScoreCard label="ATS Score" value={atsScore} color={scoreColor(atsScore)} icon={Target} />
+                  <ScoreCard label="Completeness" value={completeness} color={scoreColor(completeness)} icon={CheckCircle2} />
+                  <ScoreCard label="Keywords" value={keywordScore} color={scoreColor(keywordScore)} icon={Zap} />
+                  <ScoreCard label="Formatting" value={formattingScore} color={scoreColor(formattingScore)} icon={FileText} />
                 </div>
 
                 {/* Dimensions */}
                 <Card>
                   <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Detailed Breakdown</CardTitle></CardHeader>
                   <CardContent className="space-y-3">
-                    {result.score.dimensions?.map((d, i) => (
+                    {dimensions?.map((d: any, i: number) => (
                       <div key={i}>
                         <div className="flex justify-between text-xs mb-1">
                           <span className="capitalize">{d.name}</span>
@@ -428,24 +454,27 @@ export function ResumeStudioModule() {
                 </Card>
 
                 {/* Quick Wins */}
-                {result.score.quickWins?.length > 0 && (
+                {quickWins?.length > 0 && (
                   <Card>
                     <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2"><Zap className="h-4 w-4 text-brand" /> Quick Wins {'(< 5 min)'}</CardTitle></CardHeader>
                     <CardContent>
-                      {result.score.quickWins.map((w, i) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-brand">→</span>{w}</div>)}
+                      {quickWins.map((w: string, i: number) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-brand">→</span>{w}</div>)}
                     </CardContent>
                   </Card>
                 )}
 
                 {/* Missing Critical */}
-                {result.score.missingCritical?.length > 0 && (
+                {missingCritical?.length > 0 && (
                   <Card className="border-destructive/30">
                     <CardHeader className="pb-2"><CardTitle className="text-sm font-medium flex items-center gap-2 text-destructive"><AlertCircle className="h-4 w-4" /> Critical Missing Elements</CardTitle></CardHeader>
                     <CardContent>
-                      {result.score.missingCritical.map((m, i) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-destructive">!</span>{m}</div>)}
+                      {missingCritical.map((m: string, i: number) => <div key={i} className="text-xs text-muted-foreground flex gap-1.5 mb-1"><span className="text-destructive">!</span>{m}</div>)}
                     </CardContent>
                   </Card>
                 )}
+                    </>
+                  )
+                })()}
               </TabsContent>
 
               {/* ─── Keywords Tab ─── */}
@@ -454,7 +483,7 @@ export function ResumeStudioModule() {
                   <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Detected Keywords</CardTitle></CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-1.5">
-                      {result.keywords.detected?.map((k, i) => <Badge key={i} className="bg-brand/15 text-brand border-brand/30">{k}</Badge>)}
+                      {result.keywords?.detected?.map((k, i) => <Badge key={i} className="bg-brand/15 text-brand border-brand/30">{k}</Badge>)}
                     </div>
                   </CardContent>
                 </Card>
@@ -462,7 +491,7 @@ export function ResumeStudioModule() {
                   <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Suggested Keywords</CardTitle></CardHeader>
                   <CardContent>
                     <div className="flex flex-wrap gap-1.5">
-                      {result.keywords.suggested?.map((k, i) => <Badge key={i} variant="outline" className="border-amber-500/40 text-amber-600">{k}</Badge>)}
+                      {result.keywords?.suggested?.map((k, i) => <Badge key={i} variant="outline" className="border-amber-500/40 text-amber-600">{k}</Badge>)}
                     </div>
                   </CardContent>
                 </Card>
@@ -471,7 +500,7 @@ export function ResumeStudioModule() {
                     <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Action Verbs Used</CardTitle></CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-1.5">
-                        {result.keywords.actionVerbs?.map((k, i) => <Badge key={i} variant="secondary">{k}</Badge>)}
+                        {result.keywords?.actionVerbs?.map((k, i) => <Badge key={i} variant="secondary">{k}</Badge>)}
                       </div>
                     </CardContent>
                   </Card>
@@ -479,7 +508,7 @@ export function ResumeStudioModule() {
                     <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Missing Action Verbs</CardTitle></CardHeader>
                     <CardContent>
                       <div className="flex flex-wrap gap-1.5">
-                        {result.keywords.missingActionVerbs?.map((k, i) => <Badge key={i} variant="outline" className="text-muted-foreground">{k}</Badge>)}
+                        {result.keywords?.missingActionVerbs?.map((k, i) => <Badge key={i} variant="outline" className="text-muted-foreground">{k}</Badge>)}
                       </div>
                     </CardContent>
                   </Card>
