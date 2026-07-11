@@ -52,10 +52,22 @@ jobs:
 
       - name: Fix Compose Compiler Kotlin compatibility
         run: |
-          # Set Kotlin version to 1.9.25 to match Compose Compiler 1.5.15 requirement
-          echo "android.kotlinVersion=1.9.25" >> android/gradle.properties
-          # Also suppress the compatibility check in all modules that use Compose
-          find android -name "build.gradle" -exec sed -i '/composeOptions {/a\        suppressKotlinVersionCompatibilityCheck = true' {} \; 2>/dev/null || true
+          # Patch ALL build.gradle files (including node_modules) to suppress the
+          # Kotlin version compatibility check for Compose Compiler.
+          # RN 0.76.5 uses Kotlin 1.9.24 but Compose Compiler 1.5.15 needs 1.9.25.
+          find . -name "build.gradle" -path "*/android/*" | while read f; do
+            if grep -q "composeOptions" "$f"; then
+              sed -i '/composeOptions {/a\        suppressKotlinVersionCompatibilityCheck = true' "$f"
+            fi
+          done
+          # Also patch expo-modules-core and any module with Compose enabled
+          find node_modules -name "build.gradle" 2>/dev/null | while read f; do
+            if grep -q "composeOptions" "$f"; then
+              sed -i '/composeOptions {/a\        suppressKotlinVersionCompatibilityCheck = true' "$f"
+            fi
+          done
+          # Force Compose Compiler 1.5.14 (compatible with Kotlin 1.9.24)
+          find . -name "build.gradle" -path "*/android/*" -exec sed -i 's/kotlinCompilerExtensionVersion = "1.5.15"/kotlinCompilerExtensionVersion = "1.5.14"/g; s/kotlinCompilerExtensionVersion = '"'"'1.5.15'"'"'/kotlinCompilerExtensionVersion = '"'"'1.5.14'"'"'/g' {} \; 2>/dev/null || true
 
       - name: Build Debug APK
         working-directory: mobile/android
