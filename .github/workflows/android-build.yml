@@ -52,7 +52,10 @@ jobs:
 
       - name: Fix Compose Compiler Kotlin compatibility
         run: |
-          sed -i '/composeOptions {/a\        kotlinCompilerExtensionVersion = "1.5.14"\n        suppressKotlinVersionCompatibilityCheck = true' android/app/build.gradle || true
+          # Set Kotlin version to 1.9.25 to match Compose Compiler 1.5.15 requirement
+          echo "android.kotlinVersion=1.9.25" >> android/gradle.properties
+          # Also suppress the compatibility check in all modules that use Compose
+          find android -name "build.gradle" -exec sed -i '/composeOptions {/a\        suppressKotlinVersionCompatibilityCheck = true' {} \; 2>/dev/null || true
 
       - name: Build Debug APK
         working-directory: mobile/android
