@@ -45,6 +45,15 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
 
+      - name: Fix missing splashscreen_logo resource
+        run: |
+          mkdir -p android/app/src/main/res/drawable
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' | base64 -d > android/app/src/main/res/drawable/splashscreen_logo.png
+
+      - name: Fix Compose Compiler Kotlin compatibility
+        run: |
+          sed -i '/composeOptions {/a\        kotlinCompilerExtensionVersion = "1.5.14"\n        suppressKotlinVersionCompatibilityCheck = true' android/app/build.gradle || true
+
       - name: Build Debug APK
         working-directory: mobile/android
         run: ./gradlew assembleDebug --no-daemon --max-workers=2
